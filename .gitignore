@@ -41,3 +41,12 @@ Thumbs.db
 *.temp
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Dependency folders (covers accidental copies/renames of node_modules)
+.ignored_node_modules/
+
+# pnpm store (if ever created inside the repo)
+.pnpm-store/
+
+# Vercel local output
+.vercel
