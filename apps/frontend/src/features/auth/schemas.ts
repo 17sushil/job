@@ -5,36 +5,31 @@ const phoneRegex = /^[+]?[0-9\s()-]{7,15}$/;
 export const USER_ROLES = ['candidate', 'recruiter'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
+/** Accepts either a valid email or a phone number. */
+const identifierSchema = z
+  .string()
+  .trim()
+  .min(1, 'Email or phone is required')
+  .refine(
+    (value) =>
+      z.string().email().safeParse(value).success || phoneRegex.test(value),
+    'Enter a valid email or phone number',
+  );
+
 export const loginSchema = z.object({
-  identifier: z
-    .string()
-    .trim()
-    .min(1, 'Email or phone is required')
-    .refine(
-      (value) =>
-        z.string().email().safeParse(value).success || phoneRegex.test(value),
-      'Enter a valid email or phone number',
-    ),
+  identifier: identifierSchema,
   password: z.string().min(1, 'Password is required'),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/**
+ * The signup form itself no longer collects a role — the role is chosen on the
+ * landing page and read from the auth store when the form is submitted.
+ */
 export const registerSchema = z
   .object({
-    email: z
-      .string()
-      .trim()
-      .min(1, 'Email is required')
-      .email('Enter a valid email address'),
-    phone: z
-      .string()
-      .trim()
-      .min(1, 'Phone number is required')
-      .regex(phoneRegex, 'Enter a valid phone number'),
-    role: z.enum(USER_ROLES, {
-      errorMap: () => ({ message: 'Please select a role' }),
-    }),
+    identifier: identifierSchema,
     password: z
       .string()
       .min(8, 'Password must be at least 8 characters')

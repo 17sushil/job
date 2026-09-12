@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2, Lock, Mail, Phone } from 'lucide-react';
+import { AtSign, Loader2, Lock } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -17,12 +17,13 @@ import { FormBanner } from '@/features/auth/components/form-banner';
 import { InputWithIcon } from '@/features/auth/components/input-with-icon';
 import { PasswordInput } from '@/features/auth/components/password-input';
 import { PasswordStrength } from '@/features/auth/components/password-strength';
-import { RoleSelector } from '@/features/auth/components/role-selector';
+import { useAuthStore } from '@/store/auth';
 
 type Status = 'idle' | 'submitting' | 'success' | 'error';
 
 export function RegisterForm() {
   const router = useRouter();
+  const role = useAuthStore((state) => state.role);
   const [status, setStatus] = useState<Status>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -35,8 +36,7 @@ export function RegisterForm() {
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
-      email: '',
-      phone: '',
+      identifier: '',
       password: '',
       confirmPassword: '',
       terms: false,
@@ -45,12 +45,25 @@ export function RegisterForm() {
 
   const password = watch('password');
 
+  // A role must have been chosen on the landing page before signing up.
+  useEffect(() => {
+    if (!role) {
+      router.replace('/');
+    }
+  }, [role, router]);
+
   async function onSubmit(values: RegisterInput) {
+    if (!role) return;
     setStatus('submitting');
     setErrorMessage('');
 
     try {
-      const response = await registerRequest(values);
+      const response = await registerRequest({
+        identifier: values.identifier,
+        role,
+        password: values.password,
+        confirmPassword: values.confirmPassword,
+      });
       const body = await response.json().catch(() => null);
 
       if (!response.ok) {
@@ -87,49 +100,19 @@ export function RegisterForm() {
           )}
 
           <div className="space-y-1.5">
-            <Label>I am a…</Label>
-            <Controller
-              name="role"
-              control={control}
-              render={({ field }) => (
-                <RoleSelector value={field.value} onChange={field.onChange} />
-              )}
-            />
-            {errors.role && (
-              <p className="text-xs text-destructive">{errors.role.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="identifier">Email or phone</Label>
             <InputWithIcon
-              id="email"
-              type="email"
-              icon={<Mail className="h-4 w-4" />}
-              placeholder="you@company.com"
+              id="identifier"
+              icon={<AtSign className="h-4 w-4" />}
+              placeholder="you@company.com or +977 98…"
               autoComplete="email"
-              aria-invalid={Boolean(errors.email)}
-              {...register('email')}
+              aria-invalid={Boolean(errors.identifier)}
+              {...register('identifier')}
             />
-            {errors.email && (
-              <p className="text-xs text-destructive">{errors.email.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="phone">Phone number</Label>
-            <InputWithIcon
-              id="phone"
-              type="tel"
-              inputMode="tel"
-              icon={<Phone className="h-4 w-4" />}
-              placeholder="+977 98XXXXXXXX"
-              autoComplete="tel"
-              aria-invalid={Boolean(errors.phone)}
-              {...register('phone')}
-            />
-            {errors.phone && (
-              <p className="text-xs text-destructive">{errors.phone.message}</p>
+            {errors.identifier && (
+              <p className="text-xs text-destructive">
+                {errors.identifier.message}
+              </p>
             )}
           </div>
 

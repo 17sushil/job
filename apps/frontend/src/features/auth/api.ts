@@ -4,8 +4,9 @@ import type { UserRole } from './schemas';
 
 export interface AuthUser {
   id: string;
-  email: string;
-  phone: string;
+  identifier: string;
+  email: string | null;
+  phone: string | null;
   role: UserRole;
 }
 
@@ -16,8 +17,7 @@ export interface ApiEnvelope<T> {
 }
 
 export interface RegisterPayload {
-  email: string;
-  phone: string;
+  identifier: string;
   role: UserRole;
   password: string;
   confirmPassword: string;

@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: 'Create account' };
 
 export default function RegisterPage() {
   return (
-    <div className="space-y-6">
+    <div className="animate-fade-in-up space-y-6">
       <header className="space-y-2 text-center lg:text-left">
         <Logo className="mx-auto justify-center lg:hidden" />
         <h1 className="text-2xl font-semibold tracking-tight">
