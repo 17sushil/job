@@ -4,13 +4,20 @@ const phoneRegex = /^[+]?[0-9\s()-]{7,15}$/;
 
 export const USER_ROLES = ['candidate', 'recruiter'] as const;
 
+/** Accepts either a valid email or a phone number. */
+const identifierSchema = z
+  .string()
+  .trim()
+  .min(1, 'Email or phone is required')
+  .refine(
+    (value) =>
+      z.string().email().safeParse(value).success || phoneRegex.test(value),
+    'A valid email or phone number is required',
+  );
+
 export const registerSchema = z
   .object({
-    email: z.string().trim().toLowerCase().email('A valid email is required'),
-    phone: z
-      .string()
-      .trim()
-      .regex(phoneRegex, 'A valid phone number is required'),
+    identifier: identifierSchema,
     role: z.enum(USER_ROLES, {
       errorMap: () => ({ message: 'Role must be candidate or recruiter' }),
     }),

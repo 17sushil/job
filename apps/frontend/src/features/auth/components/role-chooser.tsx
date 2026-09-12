@@ -35,7 +35,6 @@ const OPTIONS: Array<{
 export function RoleChooser() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
-  const setRole = useAuthStore((state) => state.setRole);
   const [selected, setSelected] = useState<UserRole | null>(null);
 
   useEffect(() => {
@@ -47,9 +46,8 @@ export function RoleChooser() {
   function choose(role: UserRole) {
     if (selected) return;
     setSelected(role);
-    // Persist the role in localStorage, then move to the signup flow.
-    setRole(role);
-    setTimeout(() => router.push('/register'), 700);
+    // Pass the role through the URL instead of localStorage.
+    setTimeout(() => router.push(`/register?role=${role}`), 700);
   }
 
   return (

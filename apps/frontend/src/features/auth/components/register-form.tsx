@@ -12,18 +12,20 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { registerRequest } from '@/features/auth/api';
-import { registerSchema, type RegisterInput } from '@/features/auth/schemas';
+import {
+  registerSchema,
+  type RegisterInput,
+  type UserRole,
+} from '@/features/auth/schemas';
 import { FormBanner } from '@/features/auth/components/form-banner';
 import { InputWithIcon } from '@/features/auth/components/input-with-icon';
 import { PasswordInput } from '@/features/auth/components/password-input';
 import { PasswordStrength } from '@/features/auth/components/password-strength';
-import { useAuthStore } from '@/store/auth';
 
 type Status = 'idle' | 'submitting' | 'success' | 'error';
 
-export function RegisterForm() {
+export function RegisterForm({ initialRole }: { initialRole?: UserRole }) {
   const router = useRouter();
-  const role = useAuthStore((state) => state.role);
   const [status, setStatus] = useState<Status>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -45,22 +47,23 @@ export function RegisterForm() {
 
   const password = watch('password');
 
-  // A role must have been chosen on the landing page before signing up.
+  // A role must arrive via the URL (from the landing page) before signing up.
   useEffect(() => {
-    if (!role) {
+    if (!initialRole) {
       router.replace('/');
     }
-  }, [role, router]);
+  }, [initialRole, router]);
 
   async function onSubmit(values: RegisterInput) {
-    if (!role) return;
+    if (!initialRole) return;
     setStatus('submitting');
     setErrorMessage('');
 
     try {
+      // Merge the role (extracted from the URL) into the register request.
       const response = await registerRequest({
         identifier: values.identifier,
-        role,
+        role: initialRole,
         password: values.password,
         confirmPassword: values.confirmPassword,
       });

@@ -3,10 +3,21 @@ import Link from 'next/link';
 
 import { Logo } from '@/components/logo';
 import { RegisterForm } from '@/features/auth/components/register-form';
+import type { UserRole } from '@/features/auth/schemas';
 
 export const metadata: Metadata = { title: 'Create account' };
 
-export default function RegisterPage() {
+export default async function RegisterPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ role?: string }>;
+}) {
+  // Extract the role from the address bar (URL query param) and hand it to
+  // the client form, which merges it into the register request.
+  const { role } = await searchParams;
+  const initialRole: UserRole | undefined =
+    role === 'candidate' || role === 'recruiter' ? role : undefined;
+
   return (
     <div className="animate-fade-in-up space-y-6">
       <header className="space-y-2 text-center lg:text-left">
@@ -19,7 +30,7 @@ export default function RegisterPage() {
         </p>
       </header>
 
-      <RegisterForm />
+      <RegisterForm initialRole={initialRole} />
 
       <p className="text-center text-sm text-muted-foreground">
         Already have an account?{' '}

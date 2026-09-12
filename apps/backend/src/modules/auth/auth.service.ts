@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { z } from 'zod';
+
 import { AppError } from '../../common/errors/AppError.js';
 import type {
   AuthUser,
@@ -25,18 +27,37 @@ function toSafeUser({
   return safeUser;
 }
 
+/** Split an identifier into its email/phone parts. */
+function splitIdentifier(identifier: string): {
+  email: string | null;
+  phone: string | null;
+} {
+  const isEmail = z.string().email().safeParse(identifier).success;
+  return isEmail
+    ? { email: identifier.toLowerCase(), phone: null }
+    : { email: null, phone: identifier };
+}
+
 export class AuthService {
   register(input: RegisterInput): RegisterResult {
-        const exists = users.some((user) => user.email === input.email);
+    const { email, phone } = splitIdentifier(input.identifier);
+
+    const exists = users.some(
+      (user) =>
+        (email !== null && user.email === email) ||
+        (phone !== null && user.phone === phone),
+    );
     if (exists) {
       // Do not reveal whether an account exists — generic error prevents
       // account enumeration by attackers.
       throw new AppError(409, 'Invalid credentials');
     }
+
     const user: StoredUser = {
       id: randomUUID(),
-      email: input.email,
-      phone: input.phone,
+      identifier: input.identifier,
+      email,
+      phone,
       role: input.role,
       password: input.password, // TODO(auth): hash before persisting
     };
@@ -46,9 +67,11 @@ export class AuthService {
   }
 
   login(input: LoginInput): LoginResult {
+    const identifierLower = input.identifier.toLowerCase();
+
     const user = users.find(
       (candidate) =>
-        candidate.email === input.identifier ||
+        candidate.email === identifierLower ||
         candidate.phone === input.identifier,
     );
 

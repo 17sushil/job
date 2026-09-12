@@ -9,8 +9,12 @@ export type UserRole = 'candidate' | 'recruiter';
 
 export interface AuthUser {
   id: string;
-  email: string;
-  phone: string;
+  /** Email or phone, exactly as provided at signup. */
+  identifier: string;
+  /** Set when the identifier is an email, otherwise null. */
+  email: string | null;
+  /** Set when the identifier is a phone number, otherwise null. */
+  phone: string | null;
   role: UserRole;
 }
 
