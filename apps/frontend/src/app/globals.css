@@ -2,4 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
-body { margin: 0; font-family: Arial, sans-serif; }
+@layer base {
+  :root {
+    /* JobDev palette — blue job theme */
+    --background: 228 45% 98%; /* #F7F8FC */
+    --foreground: 226 22% 12%; /* #171A24 (headings) */
+
+    --card: 0 0% 100%;
+    --card-foreground: 226 22% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 226 22% 12%;
+
+    --primary: 230 78% 57%; /* #3B57E7 */
+    --primary-foreground: 0 0% 100%;
+    --primary-dark: 230 66% 47%; /* #2943C8 */
+    --primary-hover: 230 66% 51%; /* #304BD4 */
+    --primary-light: 229 100% 97%; /* #EEF1FF */
+
+    --secondary: 229 100% 97%;
+    --secondary-foreground: 230 66% 47%;
+
+    --muted: 226 33% 97%;
+    --muted-foreground: 224 9% 41%; /* #5F6472 (body text) */
+
+    --accent: 229 100% 97%;
+    --accent-foreground: 230 66% 47%;
+
+    --destructive: 358 75% 59%; /* #E5484D */
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 153 68% 42%; /* #22B573 */
+    --success-foreground: 0 0% 100%;
+    --warning: 37 91% 55%; /* #F5A623 */
+    --warning-foreground: 226 22% 12%;
+    --info: 179 56% 52%; /* #40C9C6 */
+    --info-foreground: 0 0% 100%;
+
+    --border: 225 21% 93%; /* #E8EAF0 */
+    --input: 225 21% 93%;
+    --ring: 230 78% 57%;
+
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family:
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      Roboto,
+      'Helvetica Neue',
+      Arial,
+      sans-serif;
+  }
+}
