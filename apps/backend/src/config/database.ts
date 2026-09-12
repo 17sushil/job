@@ -1,13 +1,16 @@
-import { prisma } from '../database/client.js';
+import { AppDataSource } from '../database/data-source.js';
 
 export const database = {
   async connect() {
-    await prisma.$connect();
-    console.log('PostgreSQL database connected via Prisma');
+    if (!AppDataSource.isInitialized) {
+      await AppDataSource.initialize();
+    }
+    console.log('PostgreSQL database connected via TypeORM');
   },
   async disconnect() {
-    await prisma.$disconnect();
-    console.log('PostgreSQL database disconnected');
+    if (AppDataSource.isInitialized) {
+      await AppDataSource.destroy();
+      console.log('PostgreSQL database disconnected');
+    }
   },
 };
-

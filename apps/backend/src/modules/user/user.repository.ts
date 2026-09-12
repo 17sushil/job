@@ -1,42 +1,34 @@
-import { prisma } from '../../database/client.js';
+import { AppDataSource } from '../../database/data-source.js';
+import { User } from './user.entity.js';
 import type { CreateUserInput, UpdateUserInput } from './user.types.js';
 
 export class UserRepository {
+  private readonly repository = AppDataSource.getRepository(User);
+
   async findMany() {
-    return prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
+    return this.repository.find({
+      order: { createdAt: 'desc' },
     });
   }
 
   async findById(id: string) {
-    return prisma.user.findUnique({
-      where: { id },
-    });
+    return this.repository.findOneBy({ id });
   }
 
   async findByEmail(email: string) {
-    return prisma.user.findUnique({
-      where: { email },
-    });
+    return this.repository.findOneBy({ email });
   }
 
   async create(data: CreateUserInput) {
-    return prisma.user.create({
-      data,
-    });
+    return this.repository.save(this.repository.create(data));
   }
 
   async update(id: string, data: UpdateUserInput) {
-    return prisma.user.update({
-      where: { id },
-      data,
-    });
+    await this.repository.update(id, data);
+    return this.repository.findOneByOrFail({ id });
   }
 
   async delete(id: string) {
-    return prisma.user.delete({
-      where: { id },
-    });
+    await this.repository.delete(id);
   }
 }
-
