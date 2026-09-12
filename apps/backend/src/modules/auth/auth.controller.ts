@@ -1,2 +1,28 @@
 import type { RequestHandler } from 'express';
-export const login: RequestHandler = (_req, res) => res.json({ message: 'Login endpoint' });
+
+import { AuthService } from './auth.service.js';
+import { loginSchema, registerSchema } from './auth.schema.js';
+
+const authService = new AuthService();
+
+export const register: RequestHandler = (req, res, next) => {
+  try {
+    const input = registerSchema.parse(req.body);
+    const result = authService.register(input);
+    res
+      .status(201)
+      .json({ data: result, message: 'Account created successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const login: RequestHandler = (req, res, next) => {
+  try {
+    const input = loginSchema.parse(req.body);
+    const result = authService.login(input);
+    res.json({ data: result, message: 'Logged in successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
