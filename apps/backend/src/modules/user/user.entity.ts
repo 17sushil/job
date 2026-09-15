@@ -11,11 +11,23 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'varchar', unique: true })
-  email!: string;
+  /** Nullable: phone-only signups have no email. */
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  email!: string | null;
+
+  /** Nullable: email-only signups have no phone. */
+  @Column({ type: 'varchar', nullable: true })
+  phone!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   name!: string | null;
+
+  @Column({ type: 'varchar', default: 'candidate' })
+  role!: string;
+
+  /** bcrypt hash — never expose this field to clients. */
+  @Column({ type: 'varchar', nullable: true })
+  passwordHash!: string | null;
 
   @CreateDateColumn({ name: 'createdAt', type: 'timestamp with time zone' })
   createdAt!: Date;
