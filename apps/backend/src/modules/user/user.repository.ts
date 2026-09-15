@@ -3,7 +3,9 @@ import { User } from './user.entity.js';
 import type { CreateUserInput, UpdateUserInput } from './user.types.js';
 
 export class UserRepository {
-  private readonly repository = AppDataSource.getRepository(User);
+  private get repository() {
+    return AppDataSource.getRepository(User);
+  }
 
   async findMany() {
     return this.repository.find({
