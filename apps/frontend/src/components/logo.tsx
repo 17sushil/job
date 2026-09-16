@@ -3,27 +3,20 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * JobDev logo mark — a resume document with a "scanned & approved" checkmark,
- * on a blue→cyan gradient tile. It visualises the core flow:
+ * JobDev logo mark - a resume document with a "scanned & approved" checkmark,
+ * on a solid brand-green tile. It visualises the core flow:
  * upload resume → ATS match → hired, faster (the check doubles as an upward step).
  */
 function Mark({ gradientId }: { gradientId: string }) {
   return (
     <svg viewBox="0 0 48 48" aria-hidden="true" className="h-full w-full">
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#2943C8" />
-          <stop offset="55%" stopColor="#3B57E7" />
-          <stop offset="100%" stopColor="#40C9C6" />
-        </linearGradient>
-      </defs>
       <rect
         x="1"
         y="1"
         width="46"
         height="46"
         rx="12"
-        fill={`url(#${gradientId})`}
+        style={{ fill: 'hsl(var(--primary))' }}
       />
       {/* resume document */}
       <path
@@ -35,7 +28,7 @@ function Mark({ gradientId }: { gradientId: string }) {
       <rect x="17" y="25" width="15" height="2.4" rx="1.2" fill="#DDE4FF" />
       <rect x="17" y="30" width="8" height="2.4" rx="1.2" fill="#DDE4FF" />
       {/* ATS-approved badge */}
-      <circle cx="32.5" cy="31.5" r="7.5" fill="#22B573" />
+      <circle cx="32.5" cy="31.5" r="7.5" style={{ fill: 'hsl(var(--success))' }} />
       <path
         d="M28.9 31.7l2.5 2.5 4.7-4.7"
         stroke="#FFFFFF"
@@ -75,12 +68,12 @@ export function Logo({
         <span
           className={cn(
             'text-xl font-bold tracking-tight',
-            variant === 'light' ? 'text-white' : 'text-[#171A24]',
+            variant === 'light' ? 'text-white' : 'text-foreground',
           )}
         >
           Job
           <span
-            className={variant === 'light' ? 'text-[#9DB8FF]' : 'text-primary'}
+            className={variant === 'light' ? 'text-primary-light' : 'text-primary'}
           >
             Dev
           </span>

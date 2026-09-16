@@ -7,6 +7,7 @@ export interface AuthUser {
   identifier: string;
   email: string | null;
   phone: string | null;
+  name: string | null;
   role: UserRole;
 }
 
@@ -28,6 +29,13 @@ export interface LoginResult {
   token: string;
 }
 
+export interface ChangePasswordPayload {
+  identifier: string;
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 export async function registerRequest(payload: RegisterPayload) {
   return apiClient('/api/auth/register', {
     method: 'POST',
@@ -41,5 +49,21 @@ export async function loginRequest(identifier: string, password: string) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ identifier, password }),
+  });
+}
+
+export async function updateProfileRequest(identifier: string, name: string) {
+  return apiClient('/api/auth/profile', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier, name }),
+  });
+}
+
+export async function changePasswordRequest(payload: ChangePasswordPayload) {
+  return apiClient('/api/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
 }

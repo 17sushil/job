@@ -6,16 +6,18 @@ import { AppDataSource } from '../../database/data-source.js';
 import { User } from '../user/user.entity.js';
 import type {
   AuthUser,
+  ChangePasswordInput,
   LoginInput,
   LoginResult,
   RegisterInput,
   RegisterResult,
+  UpdateProfileInput,
   UserRole,
 } from './auth.types.js';
 
 const SALT_ROUNDS = 10;
 
-/** Lazy accessor — the DataSource is initialized in `server.ts` at startup. */
+/** Lazy accessor - the DataSource is initialized in `server.ts` at startup. */
 const userRepo = () => AppDataSource.getRepository(User);
 
 /** Split an identifier into its email/phone parts. */
@@ -37,6 +39,7 @@ function toSafeUser(user: User): AuthUser {
     identifier: user.email ?? user.phone ?? '',
     email: user.email,
     phone: user.phone,
+    name: user.name,
     role: user.role as UserRole,
   };
 }
@@ -56,7 +59,7 @@ export class AuthService {
 
     const existing = await this.findByIdentifier(input.identifier);
     if (existing) {
-      // Do not reveal whether an account exists — generic error prevents
+      // Do not reveal whether an account exists - generic error prevents
       // account enumeration by attackers.
       throw new AppError(409, 'Invalid credentials');
     }
@@ -95,5 +98,39 @@ export class AuthService {
       user: toSafeUser(user),
       token: `demo-token-${user.id}`, // TODO(auth): sign a real JWT
     };
+  }
+
+  async updateProfile(input: UpdateProfileInput): Promise<RegisterResult> {
+    const user = await this.findByIdentifier(input.identifier);
+    if (!user) {
+      throw new AppError(404, 'Account not found');
+    }
+    user.name = input.name.trim();
+    const saved = await userRepo().save(user);
+    return { user: toSafeUser(saved) };
+  }
+
+  async changePassword(
+    input: ChangePasswordInput,
+  ): Promise<{ message: string }> {
+    const user = await this.findByIdentifier(input.identifier);
+
+    // Generic wording here too - do not leak whether the account exists.
+    if (!user || !user.passwordHash) {
+      throw new AppError(401, 'Current password is incorrect');
+    }
+
+    const currentMatches = await bcrypt.compare(
+      input.currentPassword,
+      user.passwordHash,
+    );
+    if (!currentMatches) {
+      throw new AppError(401, 'Current password is incorrect');
+    }
+
+    user.passwordHash = await bcrypt.hash(input.newPassword, SALT_ROUNDS);
+    await userRepo().save(user);
+
+    return { message: 'Password updated successfully' };
   }
 }
