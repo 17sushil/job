@@ -1,136 +1,79 @@
-import bcrypt from 'bcrypt';
-import { z } from 'zod';
-
+import * as bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import { AppError } from '../../common/errors/AppError.js';
-import { AppDataSource } from '../../database/data-source.js';
-import { User } from '../user/user.entity.js';
-import type {
-  AuthUser,
-  ChangePasswordInput,
-  LoginInput,
-  LoginResult,
-  RegisterInput,
-  RegisterResult,
-  UpdateProfileInput,
-  UserRole,
-} from './auth.types.js';
-
-const SALT_ROUNDS = 10;
-
-/** Lazy accessor - the DataSource is initialized in `server.ts` at startup. */
-const userRepo = () => AppDataSource.getRepository(User);
-
-/** Split an identifier into its email/phone parts. */
-function splitIdentifier(identifier: string): {
-  email: string | null;
-  phone: string | null;
-} {
-  const trimmed = identifier.trim();
-  const isEmail = z.string().email().safeParse(trimmed).success;
-  return isEmail
-    ? { email: trimmed.toLowerCase(), phone: null }
-    : { email: null, phone: trimmed };
-}
-
-/** Strip sensitive fields before sending a user to the client. */
-function toSafeUser(user: User): AuthUser {
-  return {
-    id: user.id,
-    identifier: user.email ?? user.phone ?? '',
-    email: user.email,
-    phone: user.phone,
-    name: user.name,
-    role: user.role as UserRole,
-  };
-}
+import { env } from '../../config/env.js';
+import { redisClient } from '../../config/redis.js';
+import { UserRepository } from '../user/user.repository.js';
+import { z } from 'zod';
+import { loginSchema, verifyOtpSchema, forgotPasswordSchema } from './auth.schema.js';
 
 export class AuthService {
-  private async findByIdentifier(identifier: string): Promise<User | null> {
-    const trimmed = identifier.trim();
-    return userRepo()
-      .createQueryBuilder('user')
-      .where('user.email = :value OR user.phone = :value', { value: trimmed })
-      .orWhere('LOWER(user.email) = LOWER(:value)', { value: trimmed })
-      .getOne();
-  }
+  private userRepo = new UserRepository();
 
-  async register(input: RegisterInput): Promise<RegisterResult> {
-    const { email, phone } = splitIdentifier(input.identifier);
-
-    const existing = await this.findByIdentifier(input.identifier);
-    if (existing) {
-      // Do not reveal whether an account exists - generic error prevents
-      // account enumeration by attackers.
-      throw new AppError(409, 'Invalid credentials');
-    }
-
-    const passwordHash = await bcrypt.hash(input.password, SALT_ROUNDS);
-
-    const user = await userRepo().save(
-      userRepo().create({
-        email,
-        phone,
-        role: input.role,
-        passwordHash,
-        name: null,
-      }),
-    );
-
-    return { user: toSafeUser(user) };
-  }
-
-  async login(input: LoginInput): Promise<LoginResult> {
-    const user = await this.findByIdentifier(input.identifier);
-
-    if (!user || !user.passwordHash) {
-      throw new AppError(401, 'Invalid email/phone or password');
-    }
-
-    const passwordMatches = await bcrypt.compare(
-      input.password,
-      user.passwordHash,
-    );
-    if (!passwordMatches) {
-      throw new AppError(401, 'Invalid email/phone or password');
-    }
-
-    return {
-      user: toSafeUser(user),
-      token: `demo-token-${user.id}`, // TODO(auth): sign a real JWT
-    };
-  }
-
-  async updateProfile(input: UpdateProfileInput): Promise<RegisterResult> {
-    const user = await this.findByIdentifier(input.identifier);
+  async login(data: z.infer<typeof loginSchema>) {
+    const user = await this.userRepo.findByEmail(data.email);
     if (!user) {
-      throw new AppError(404, 'Account not found');
+      throw new AppError(401, 'Invalid email or password');
     }
-    user.name = input.name.trim();
-    const saved = await userRepo().save(user);
-    return { user: toSafeUser(saved) };
+
+    const isMatch = await bcrypt.compare(data.password, user.password);
+    if (!isMatch) {
+      throw new AppError(401, 'Invalid email or password');
+    }
+
+    const token = jwt.sign(
+      { userId: user.userId, role: user.role },
+      env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    return { token, user };
   }
 
-  async changePassword(
-    input: ChangePasswordInput,
-  ): Promise<{ message: string }> {
-    const user = await this.findByIdentifier(input.identifier);
-
-    // Generic wording here too - do not leak whether the account exists.
-    if (!user || !user.passwordHash) {
-      throw new AppError(401, 'Current password is incorrect');
+  async forgotPassword(data: z.infer<typeof forgotPasswordSchema>) {
+    const user = await this.userRepo.findByEmail(data.email);
+    if (!user) {
+      // Return success anyway to prevent email enumeration
+      return { message: 'If this email is registered, an OTP has been sent.' };
     }
 
-    const currentMatches = await bcrypt.compare(
-      input.currentPassword,
-      user.passwordHash,
-    );
-    if (!currentMatches) {
-      throw new AppError(401, 'Current password is incorrect');
+    // Generate 6 digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Hash the OTP (Requirement: "otp hash , middleware")
+    const hashedOtp = await bcrypt.hash(otp, 10);
+    
+    // Save to Redis (expires in 10 minutes)
+    await redisClient.set(`otp:${user.email}`, hashedOtp, { EX: 600 });
+    
+    // In a real app, send via email/SMS here
+    console.log(`[DEBUG] OTP for ${user.email} is ${otp}`);
+
+    return { message: 'OTP sent successfully' };
+  }
+
+  async verifyOtpAndResetPassword(data: z.infer<typeof verifyOtpSchema>) {
+    const hashedOtp = await redisClient.get(`otp:${data.email}`);
+    if (!hashedOtp) {
+      throw new AppError(400, 'OTP expired or not requested');
     }
 
-    user.passwordHash = await bcrypt.hash(input.newPassword, SALT_ROUNDS);
-    await userRepo().save(user);
+    const isMatch = await bcrypt.compare(data.otp, hashedOtp);
+    if (!isMatch) {
+      throw new AppError(400, 'Invalid OTP');
+    }
 
-    return { message: 'Password updated successfully' };
+    const user = await this.userRepo.findByEmail(data.email);
+    if (!user) {
+      throw new AppError(404, 'User not found');
+    }
+
+    const hashedNewPassword = await bcrypt.hash(data.newPassword, 10);
+    await this.userRepo.update(user.userId, { password: hashedNewPassword });
+
+    // Delete OTP after successful use
+    await redisClient.del(`otp:${data.email}`);
+
+    return { message: 'Password reset successfully' };
   }
 }

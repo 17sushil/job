@@ -1,52 +1,59 @@
 import type { RequestHandler } from 'express';
-
 import { AuthService } from './auth.service.js';
-import {
-  changePasswordSchema,
-  loginSchema,
-  registerSchema,
-  updateProfileSchema,
-} from './auth.schema.js';
+import { UserService } from '../user/user.service.js';
 
 const authService = new AuthService();
-
-export const register: RequestHandler = async (req, res, next) => {
-  try {
-    const input = registerSchema.parse(req.body);
-    const result = await authService.register(input);
-    res
-      .status(201)
-      .json({ data: result, message: 'Account created successfully' });
-  } catch (error) {
-    next(error);
-  }
-};
+const userService = new UserService();
 
 export const login: RequestHandler = async (req, res, next) => {
   try {
-    const input = loginSchema.parse(req.body);
-    const result = await authService.login(input);
-    res.json({ data: result, message: 'Logged in successfully' });
+    const result = await authService.login(req.body);
+    // Map fields for Sushil's frontend compatibility
+    const formattedUser = { 
+      ...result.user, 
+      id: result.user.userId,
+      identifier: result.user.email || result.user.mobile,
+      phone: result.user.mobile,
+      name: null,
+      role: result.user.role.toLowerCase()
+    };
+    res.json({ success: true, data: { token: result.token, user: formattedUser } });
   } catch (error) {
     next(error);
   }
 };
 
-export const updateProfile: RequestHandler = async (req, res, next) => {
+export const register: RequestHandler = async (req, res, next) => {
   try {
-    const input = updateProfileSchema.parse(req.body);
-    const result = await authService.updateProfile(input);
-    res.json({ data: result, message: 'Profile updated successfully' });
+    const user = await userService.createUser(req.body);
+    const { password, ...userWithoutPassword } = user;
+    const formattedUser = { 
+      ...userWithoutPassword, 
+      id: user.userId,
+      identifier: user.email || user.mobile,
+      phone: user.mobile,
+      name: null,
+      role: user.role.toLowerCase()
+    };
+    res.status(201).json({ success: true, data: { user: formattedUser } });
   } catch (error) {
     next(error);
   }
 };
 
-export const changePassword: RequestHandler = async (req, res, next) => {
+export const forgotPassword: RequestHandler = async (req, res, next) => {
   try {
-    const input = changePasswordSchema.parse(req.body);
-    const result = await authService.changePassword(input);
-    res.json({ data: result, message: result.message });
+    const result = await authService.forgotPassword(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const verifyOtp: RequestHandler = async (req, res, next) => {
+  try {
+    const result = await authService.verifyOtpAndResetPassword(req.body);
+    res.json({ success: true, data: result });
   } catch (error) {
     next(error);
   }

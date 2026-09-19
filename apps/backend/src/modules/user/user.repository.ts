@@ -3,9 +3,7 @@ import { User } from './user.entity.js';
 import type { CreateUserInput, UpdateUserInput } from './user.types.js';
 
 export class UserRepository {
-  private get repository() {
-    return AppDataSource.getRepository(User);
-  }
+  private readonly repository = AppDataSource.getRepository(User);
 
   async findMany() {
     return this.repository.find({
@@ -13,24 +11,28 @@ export class UserRepository {
     });
   }
 
-  async findById(id: string) {
-    return this.repository.findOneBy({ id });
+  async findById(userId: string) {
+    return this.repository.findOneBy({ userId });
   }
 
   async findByEmail(email: string) {
     return this.repository.findOneBy({ email });
+  }
+  
+  async findByMobile(mobile: string) {
+    return this.repository.findOneBy({ mobile });
   }
 
   async create(data: CreateUserInput) {
     return this.repository.save(this.repository.create(data));
   }
 
-  async update(id: string, data: UpdateUserInput) {
-    await this.repository.update(id, data);
-    return this.repository.findOneByOrFail({ id });
+  async update(userId: string, data: UpdateUserInput) {
+    await this.repository.update(userId, data);
+    return this.repository.findOneByOrFail({ userId });
   }
 
-  async delete(id: string) {
-    await this.repository.delete(id);
+  async delete(userId: string) {
+    await this.repository.delete(userId);
   }
 }
