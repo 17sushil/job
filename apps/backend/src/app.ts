@@ -1,11 +1,17 @@
 import cors from 'cors';
 import express from 'express';
+import helmet from 'helmet';
 import { AppDataSource } from './database/data-source.js';
 import { errorHandler } from './middlewares/errorHandler.js';
+import { globalRateLimiter } from './middlewares/rateLimiter.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { userRoutes } from './modules/user/user.routes.js';
 
 export const app = express();
+
+// Security Middlewares
+app.use(helmet());
+app.use(globalRateLimiter);
 
 app.use(cors());
 app.use(express.json());
