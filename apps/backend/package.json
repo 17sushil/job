@@ -8,7 +8,7 @@
     "migration:generate": "tsx node_modules/typeorm/cli.js -d src/database/data-source.ts migration:generate",
     "migration:run": "tsx node_modules/typeorm/cli.js -d src/database/data-source.ts migration:run",
     "migration:revert": "tsx node_modules/typeorm/cli.js -d src/database/data-source.ts migration:revert",
-    "lint": "eslint src tests",
+    "lint": "eslint src",
     "test": "vitest run"
   },
   "dependencies": {
@@ -35,6 +35,8 @@
     "eslint": "^9.17.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "@eslint/js": "^9.39.5",
+    "typescript-eslint": "^8.46.0"
   }
 }

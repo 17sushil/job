@@ -8,7 +8,16 @@ const userService = new UserService();
 export const login: RequestHandler = async (req, res, next) => {
   try {
     const result = await authService.login(req.body);
-    res.json({ success: true, data: result });
+    // Map fields for Sushil's frontend compatibility
+    const formattedUser = { 
+      ...result.user, 
+      id: result.user.userId,
+      identifier: result.user.email || result.user.mobile,
+      phone: result.user.mobile,
+      name: null,
+      role: result.user.role.toLowerCase()
+    };
+    res.json({ success: true, data: { token: result.token, user: formattedUser } });
   } catch (error) {
     next(error);
   }
@@ -16,11 +25,17 @@ export const login: RequestHandler = async (req, res, next) => {
 
 export const register: RequestHandler = async (req, res, next) => {
   try {
-    // We can reuse the UserService's createUser method for registration
     const user = await userService.createUser(req.body);
-    // Remove password from response
     const { password, ...userWithoutPassword } = user;
-    res.status(201).json({ success: true, data: userWithoutPassword });
+    const formattedUser = { 
+      ...userWithoutPassword, 
+      id: user.userId,
+      identifier: user.email || user.mobile,
+      phone: user.mobile,
+      name: null,
+      role: user.role.toLowerCase()
+    };
+    res.status(201).json({ success: true, data: { user: formattedUser } });
   } catch (error) {
     next(error);
   }
