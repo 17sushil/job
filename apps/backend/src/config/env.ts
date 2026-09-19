@@ -13,6 +13,7 @@ const schema = z.object({
   DB_SSL: booleanFromEnv.default('false'),
   DB_SSL_REJECT_UNAUTHORIZED: booleanFromEnv.default('true'),
   REDIS_URL: z.string().default('redis://localhost:6379'),
+  JWT_SECRET: z.string().default('supersecretjwtkey'),
 }).refine(({ DB_POOL_MIN, DB_POOL_MAX }) => DB_POOL_MIN <= DB_POOL_MAX, {
   message: 'DB_POOL_MIN must not exceed DB_POOL_MAX',
   path: ['DB_POOL_MIN'],
