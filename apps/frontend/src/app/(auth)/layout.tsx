@@ -102,7 +102,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             style={{ animationDelay: '200ms' }}
           >
             From resume to interview,{' '}
-            <span className="text-primary-light">
+            <span className="text-cta">
               in under 30 seconds.
             </span>
           </h2>

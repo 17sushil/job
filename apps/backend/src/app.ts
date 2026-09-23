@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { AppDataSource } from './database/data-source.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { globalRateLimiter } from './middlewares/rateLimiter.js';
+import { adminRoutes } from './modules/admin/admin.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { recruiterRoutes } from './modules/recruiter/recruiter.routes.js';
 import { userRoutes } from './modules/user/user.routes.js';
@@ -52,5 +53,6 @@ app.get('/health', async (_req, res) => {
 
 app.use('/api/users', userRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api', recruiterRoutes);
 app.use(errorHandler);

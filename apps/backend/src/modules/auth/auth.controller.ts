@@ -11,18 +11,10 @@ import { AuthService } from './auth.service.js';
 const authService = new AuthService();
 const userService = new UserService();
 
-/** Strip secrets and map fields for the frontend contract. */
-function formatUser(user: User) {
+/** Strip the bcrypt hash. Field mapping for the UI happens in the frontend. */
+function sanitizeUser(user: User) {
   const { password, ...safe } = user;
-  return {
-    ...safe,
-    id: user.userId,
-    identifier: user.email ?? user.mobile ?? '',
-    phone: user.mobile,
-    email: user.email,
-    name: user.name,
-    role: user.role.toLowerCase(),
-  };
+  return safe;
 }
 
 function setSessionCookie(res: Response, token: string) {
@@ -47,7 +39,7 @@ export const login: RequestHandler = async (req, res, next) => {
     setSessionCookie(res, result.token);
     res.json({
       success: true,
-      data: { token: result.token, user: formatUser(result.user) },
+      data: { token: result.token, user: sanitizeUser(result.user) },
     });
   } catch (error) {
     next(error);
@@ -57,7 +49,7 @@ export const login: RequestHandler = async (req, res, next) => {
 export const register: RequestHandler = async (req, res, next) => {
   try {
     const user = await userService.createUser(req.body);
-    res.status(201).json({ success: true, data: { user: formatUser(user) } });
+    res.status(201).json({ success: true, data: { user: sanitizeUser(user) } });
   } catch (error) {
     next(error);
   }
@@ -67,7 +59,7 @@ export const me: RequestHandler = async (req, res, next) => {
   try {
     const { userId } = requireUser(req as AuthRequest);
     const user = await authService.me(userId);
-    res.json({ success: true, data: formatUser(user) });
+    res.json({ success: true, data: sanitizeUser(user) });
   } catch (error) {
     next(error);
   }
@@ -82,7 +74,7 @@ export const updateProfile: RequestHandler = async (req, res, next) => {
   try {
     const { userId } = requireUser(req as AuthRequest);
     const user = await authService.updateName(userId, req.body.name);
-    res.json({ success: true, data: { user: formatUser(user) } });
+    res.json({ success: true, data: { user: sanitizeUser(user) } });
   } catch (error) {
     next(error);
   }

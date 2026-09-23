@@ -11,6 +11,33 @@ export interface AuthUser {
   role: UserRole;
 }
 
+/**
+ * The shape the backend returns: the raw safe user entity (bcrypt hash
+ * stripped server-side, no duplicate/mapped fields). All view-model
+ * mapping happens here, in the frontend, exactly once.
+ */
+export interface SafeUser {
+  userId: string;
+  role: string;
+  email: string | null;
+  mobile: string | null;
+  name: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Map the backend safe user to the UI model (frontend-only mapping). */
+export function toAuthUser(safe: SafeUser): AuthUser {
+  return {
+    id: safe.userId,
+    identifier: safe.email ?? safe.mobile ?? '',
+    email: safe.email,
+    phone: safe.mobile,
+    name: safe.name,
+    role: safe.role.toLowerCase() as UserRole,
+  };
+}
+
 export interface ApiEnvelope<T> {
   success?: boolean;
   data?: T;
@@ -30,33 +57,37 @@ export interface LoginResult {
   token: string;
 }
 
+interface UserEnvelope {
+  user: SafeUser;
+}
+
 /**
  * All auth calls go through Axios with the httpOnly session cookie.
  * Each function resolves with the unwrapped payload and rejects with an
  * Error carrying the server message (see `errorMessage`).
  */
 export async function registerRequest(payload: RegisterPayload) {
-  const { data } = await apiClient.post<ApiEnvelope<{ user: AuthUser }>>(
+  const { data } = await apiClient.post<ApiEnvelope<UserEnvelope>>(
     '/api/auth/register',
     payload,
   );
-  return data.data!.user;
+  return toAuthUser(data.data!.user);
 }
 
 export async function loginRequest(identifier: string, password: string) {
-  const { data } = await apiClient.post<ApiEnvelope<LoginResult>>(
-    '/api/auth/login',
-    { identifier, password },
-  );
-  return data.data!;
+  const { data } = await apiClient.post<
+    ApiEnvelope<{ token: string; user: SafeUser }>
+  >('/api/auth/login', { identifier, password });
+  const result = data.data!;
+  return { token: result.token, user: toAuthUser(result.user) };
 }
 
 /** Hydrates the session from the httpOnly cookie (no client-side token). */
 export async function meRequest() {
-  const { data } = await apiClient.get<ApiEnvelope<AuthUser>>(
+  const { data } = await apiClient.get<ApiEnvelope<SafeUser>>(
     '/api/auth/me',
   );
-  return data.data!;
+  return toAuthUser(data.data!);
 }
 
 export async function logoutRequest() {
@@ -64,11 +95,11 @@ export async function logoutRequest() {
 }
 
 export async function updateProfileRequest(name: string) {
-  const { data } = await apiClient.patch<ApiEnvelope<{ user: AuthUser }>>(
+  const { data } = await apiClient.patch<ApiEnvelope<UserEnvelope>>(
     '/api/auth/profile',
     { name },
   );
-  return data.data!.user;
+  return toAuthUser(data.data!.user);
 }
 
 export interface ChangePasswordPayload {

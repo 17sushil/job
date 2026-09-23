@@ -69,7 +69,7 @@ export function Logo({
         >
           Job
           <span
-            className={variant === 'light' ? 'text-primary-light' : 'text-primary'}
+            className={variant === 'light' ? 'text-cta' : 'text-primary'}
           >
             Dev
           </span>

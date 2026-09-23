@@ -11,6 +11,7 @@ import {
   changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
+  pickIdentifier,
   verifyOtpSchema,
 } from './auth.schema.js';
 
@@ -53,7 +54,7 @@ export class AuthService {
   }
 
   async forgotPassword(data: z.infer<typeof forgotPasswordSchema>) {
-    const user = await this.findByIdentifier(data.identifier);
+    const user = await this.findByIdentifier(pickIdentifier(data));
     if (!user) {
       // Return success anyway to prevent account enumeration
       return { message: 'If this account exists, a one-time code has been issued.' };
@@ -75,7 +76,7 @@ export class AuthService {
   }
 
   async verifyOtpAndResetPassword(data: z.infer<typeof verifyOtpSchema>) {
-    const user = await this.findByIdentifier(data.identifier);
+    const user = await this.findByIdentifier(pickIdentifier(data));
     const hashedOtp = user ? await kvGet(`otp:${user.userId}`) : null;
     if (!user || !hashedOtp) {
       throw new AppError(400, 'OTP expired or not requested');
