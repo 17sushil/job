@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { registerRequest } from '@/features/auth/api';
+import { errorMessage as getErrorMessage } from '@/lib/api-client';
 import {
   registerSchema,
   type RegisterInput,
@@ -61,26 +62,19 @@ export function RegisterForm({ initialRole }: { initialRole?: UserRole }) {
 
     try {
       // Merge the role (extracted from the URL) into the register request.
-      const response = await registerRequest({
+      await registerRequest({
         identifier: values.identifier,
         role: initialRole.toUpperCase(),
         password: values.password,
         confirmPassword: values.confirmPassword,
       });
-      const body = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          body?.message ?? 'Registration failed. Please try again.',
-        );
-      }
 
       setStatus('success');
       setTimeout(() => router.push('/login'), 1200);
     } catch (error) {
       setStatus('error');
       setErrorMessage(
-        error instanceof Error ? error.message : 'Something went wrong.',
+        getErrorMessage(error, 'Registration failed. Please try again.'),
       );
     }
   }

@@ -12,9 +12,9 @@ export interface AuthUser {
 }
 
 export interface ApiEnvelope<T> {
+  success?: boolean;
   data?: T;
   message?: string;
-  errors?: Array<{ field: string; message: string }>;
 }
 
 export interface RegisterPayload {
@@ -30,63 +30,78 @@ export interface LoginResult {
   token: string;
 }
 
-export interface ChangePasswordPayload {
-  identifier: string;
-  currentPassword: string;
-  newPassword: string;
-  confirmPassword: string;
-}
-
+/**
+ * All auth calls go through Axios with the httpOnly session cookie.
+ * Each function resolves with the unwrapped payload and rejects with an
+ * Error carrying the server message (see `errorMessage`).
+ */
 export async function registerRequest(payload: RegisterPayload) {
-  return apiClient('/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const { data } = await apiClient.post<ApiEnvelope<{ user: AuthUser }>>(
+    '/api/auth/register',
+    payload,
+  );
+  return data.data!.user;
 }
 
 export async function loginRequest(identifier: string, password: string) {
-  return apiClient('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identifier, password }),
-  });
+  const { data } = await apiClient.post<ApiEnvelope<LoginResult>>(
+    '/api/auth/login',
+    { identifier, password },
+  );
+  return data.data!;
 }
 
-export async function updateProfileRequest(identifier: string, name: string) {
-  return apiClient('/api/auth/profile', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identifier, name }),
-  });
+/** Hydrates the session from the httpOnly cookie (no client-side token). */
+export async function meRequest() {
+  const { data } = await apiClient.get<ApiEnvelope<AuthUser>>(
+    '/api/auth/me',
+  );
+  return data.data!;
+}
+
+export async function logoutRequest() {
+  await apiClient.post('/api/auth/logout');
+}
+
+export async function updateProfileRequest(name: string) {
+  const { data } = await apiClient.patch<ApiEnvelope<{ user: AuthUser }>>(
+    '/api/auth/profile',
+    { name },
+  );
+  return data.data!.user;
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export async function changePasswordRequest(payload: ChangePasswordPayload) {
-  return apiClient('/api/auth/change-password', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const { data } = await apiClient.post<ApiEnvelope<{ message: string }>>(
+    '/api/auth/change-password',
+    payload,
+  );
+  return data.data!;
 }
 
-export async function forgotPasswordRequest(email: string) {
-  return apiClient('/api/auth/forgot-password', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  });
+export async function forgotPasswordRequest(identifier: string) {
+  const { data } = await apiClient.post<ApiEnvelope<{ message: string }>>(
+    '/api/auth/forgot-password',
+    { identifier },
+  );
+  return data.data!;
 }
 
 export interface VerifyOtpPayload {
-  email: string;
+  identifier: string;
   otp: string;
   newPassword: string;
 }
 
 export async function verifyOtpRequest(payload: VerifyOtpPayload) {
-  return apiClient('/api/auth/verify-otp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const { data } = await apiClient.post<ApiEnvelope<{ message: string }>>(
+    '/api/auth/verify-otp',
+    payload,
+  );
+  return data.data!;
 }

@@ -10,9 +10,9 @@ import { Label } from '@/components/ui/label';
 import {
   forgotPasswordRequest,
   verifyOtpRequest,
-  type ApiEnvelope,
 } from '@/features/auth/api';
 import { FormBanner } from '@/features/auth/components/form-banner';
+import { errorMessage as getErrorMessage } from '@/lib/api-client';
 import { InputWithIcon } from '@/features/auth/components/input-with-icon';
 import { PasswordInput } from '@/features/auth/components/password-input';
 
@@ -24,7 +24,7 @@ export function ForgotPasswordForm() {
   const [errorMessage, setErrorMessage] = useState('');
   const [notice, setNotice] = useState('');
 
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -35,22 +35,16 @@ export function ForgotPasswordForm() {
     setErrorMessage('');
     setNotice('');
     try {
-      const response = await forgotPasswordRequest(email.trim());
-      const body = (await response
-        .json()
-        .catch(() => null)) as ApiEnvelope<unknown> | null;
-      if (!response.ok) {
-        throw new Error(body?.message ?? 'Something went wrong. Please try again.');
-      }
+      await forgotPasswordRequest(identifier.trim());
       setStep('reset');
       setNotice(
-        'If this email is registered, a 6-digit code has been issued. Demo mode: the code is printed in the backend console.',
+        'If this account exists, a 6-digit code has been issued. Demo mode: the code is printed in the backend console.',
       );
       setStatus('idle');
     } catch (error) {
       setStatus('error');
       setErrorMessage(
-        error instanceof Error ? error.message : 'Something went wrong.',
+        getErrorMessage(error, 'Something went wrong. Please try again.'),
       );
     }
   }
@@ -66,22 +60,16 @@ export function ForgotPasswordForm() {
       return;
     }
     try {
-      const response = await verifyOtpRequest({
-        email: email.trim(),
+      await verifyOtpRequest({
+        identifier: identifier.trim(),
         otp: otp.trim(),
         newPassword,
       });
-      const body = (await response
-        .json()
-        .catch(() => null)) as ApiEnvelope<unknown> | null;
-      if (!response.ok) {
-        throw new Error(body?.message ?? 'Something went wrong. Please try again.');
-      }
       setStatus('success');
     } catch (error) {
       setStatus('error');
       setErrorMessage(
-        error instanceof Error ? error.message : 'Something went wrong.',
+        getErrorMessage(error, 'Something went wrong. Please try again.'),
       );
     }
   }
@@ -120,21 +108,21 @@ export function ForgotPasswordForm() {
             noValidate
           >
             <div className="space-y-1.5">
-              <Label htmlFor="forgot-email">Account email</Label>
+              <Label htmlFor="forgot-identifier">Email or phone</Label>
               <InputWithIcon
-                id="forgot-email"
+                id="forgot-identifier"
                 icon={<Mail className="h-4 w-4" />}
-                placeholder="you@company.com"
+                placeholder="you@company.com or +977 98…"
                 autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                value={identifier}
+                onChange={(event) => setIdentifier(event.target.value)}
               />
             </div>
             <Button
               type="submit"
               size="lg"
               className="w-full"
-              disabled={status === 'submitting' || !email.trim()}
+              disabled={status === 'submitting' || !identifier.trim()}
             >
               {status === 'submitting' ? (
                 <>
@@ -207,7 +195,7 @@ export function ForgotPasswordForm() {
               }}
               className="mx-auto block text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
             >
-              Use a different email
+              Use a different email or phone
             </button>
           </form>
         )}

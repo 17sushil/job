@@ -1,35 +1,32 @@
 'use client';
 
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { AuthUser } from '@/features/auth/api';
 
 interface AuthState {
   user: AuthUser | null;
+  /** True once the session cookie has been checked against /api/auth/me. */
+  hydrated: boolean;
   setUser: (user: AuthUser) => void;
+  setHydrated: (hydrated: boolean) => void;
   logout: () => void;
 }
 
 /**
- * Persisted auth store. The signed-in user (including their role, which the
- * backend returns) is kept in localStorage for the session. The role *choice*
- * itself is NOT stored here — it travels through the URL query param
- * (`/register?role=...`) and is merged into the register request.
+ * Cookie-backed auth store. The session token lives ONLY in an httpOnly
+ * cookie set by the backend, so nothing is persisted client-side. On page
+ * load the dashboard layout calls GET /api/auth/me and fills this store
+ * from the response; if the cookie is missing or expired the user is sent
+ * back to /login.
  *
- * TODO(auth): swap the session for a real httpOnly cookie once the backend
- * issues JWTs.
+ * The role *choice* for signup still travels through the URL query param
+ * (`/register?role=...`) and is merged into the register request.
  */
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      setUser: (user) => set({ user }),
-      logout: () => set({ user: null }),
-    }),
-    {
-      name: 'jobdev-auth',
-      storage: createJSONStorage(() => localStorage),
-    },
-  ),
-);
+export const useAuthStore = create<AuthState>()((set) => ({
+  user: null,
+  hydrated: false,
+  setUser: (user) => set({ user, hydrated: true }),
+  setHydrated: (hydrated) => set({ hydrated }),
+  logout: () => set({ user: null, hydrated: true }),
+}));

@@ -1,6 +1,5 @@
 import { AppDataSource } from '../../database/data-source.js';
 import { User } from './user.entity.js';
-import type { CreateUserInput, UpdateUserInput } from './user.types.js';
 
 export class UserRepository {
   private readonly repository = AppDataSource.getRepository(User);
@@ -18,16 +17,16 @@ export class UserRepository {
   async findByEmail(email: string) {
     return this.repository.findOneBy({ email });
   }
-  
+
   async findByMobile(mobile: string) {
     return this.repository.findOneBy({ mobile });
   }
 
-  async create(data: CreateUserInput) {
+  async create(data: Partial<User>) {
     return this.repository.save(this.repository.create(data));
   }
 
-  async update(userId: string, data: UpdateUserInput) {
+  async update(userId: string, data: Partial<User>) {
     await this.repository.update(userId, data);
     return this.repository.findOneByOrFail({ userId });
   }

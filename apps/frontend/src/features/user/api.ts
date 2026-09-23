@@ -1,1 +1,5 @@
-export async function getUsers() { return fetch('/api/users'); }
+import { apiClient } from '@/lib/api-client';
+
+export async function getUsers() {
+  return apiClient.get('/api/users');
+}

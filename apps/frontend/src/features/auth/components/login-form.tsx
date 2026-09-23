@@ -11,12 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import {
-  loginRequest,
-  type ApiEnvelope,
-  type LoginResult,
-} from '@/features/auth/api';
+import { loginRequest } from '@/features/auth/api';
 import { loginSchema, type LoginInput } from '@/features/auth/schemas';
+import { errorMessage as getErrorMessage } from '@/lib/api-client';
 import { FormBanner } from '@/features/auth/components/form-banner';
 import { InputWithIcon } from '@/features/auth/components/input-with-icon';
 import { PasswordInput } from '@/features/auth/components/password-input';
@@ -44,27 +41,15 @@ export function LoginForm() {
     setErrorMessage('');
 
     try {
-      const response = await loginRequest(values.identifier, values.password);
-      const body = (await response
-        .json()
-        .catch(() => null)) as ApiEnvelope<LoginResult> | null;
-
-      if (!response.ok) {
-        throw new Error(body?.message ?? 'Login failed. Please try again.');
-      }
-
-      // Persist the signed-in user (with their role) for the dashboard.
-      if (body?.data?.user) {
-        setUser(body.data.user);
-      }
+      // The backend sets the httpOnly session cookie on this response.
+      const { user } = await loginRequest(values.identifier, values.password);
+      setUser(user);
 
       setStatus('success');
       setTimeout(() => router.push('/dashboard'), 800);
     } catch (error) {
       setStatus('error');
-      setErrorMessage(
-        error instanceof Error ? error.message : 'Something went wrong.',
-      );
+      setErrorMessage(getErrorMessage(error, 'Login failed. Please try again.'));
     }
   }
 

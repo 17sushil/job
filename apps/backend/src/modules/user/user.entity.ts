@@ -25,11 +25,15 @@ export class User {
   })
   role!: UserRole;
 
-  @Column({ type: 'varchar', unique: true })
-  email!: string;
+  /** Email or mobile identifies the account; at least one is always set. */
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  email!: string | null;
 
-  @Column({ type: 'varchar', unique: true })
-  mobile!: string;
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  mobile!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  name!: string | null;
 
   @Column({ type: 'varchar' })
   password!: string;

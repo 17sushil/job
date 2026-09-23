@@ -17,10 +17,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   changePasswordRequest,
+  logoutRequest,
   updateProfileRequest,
-  type ApiEnvelope,
-  type AuthUser,
 } from '@/features/auth/api';
+import { errorMessage } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth';
 
 type ModalKind = 'profile' | 'password' | null;
@@ -98,20 +98,12 @@ export function AccountMenu() {
     setBusy(true);
     setError('');
     try {
-      const response = await updateProfileRequest(user.identifier, name.trim());
-      const body = (await response.json().catch(
-        () => null,
-      )) as ApiEnvelope<{ user: AuthUser }> | null;
-      if (!response.ok) {
-        throw new Error(body?.message ?? 'Could not update profile.');
-      }
-      if (body?.data?.user) {
-        setUser(body.data.user);
-      }
+      const updated = await updateProfileRequest(name.trim());
+      setUser(updated);
       setSuccess('Profile updated.');
       setTimeout(closeAll, 900);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
+      setError(errorMessage(err, 'Could not update profile.'));
     } finally {
       setBusy(false);
     }
@@ -127,28 +119,31 @@ export function AccountMenu() {
     setBusy(true);
     setError('');
     try {
-      const response = await changePasswordRequest({
-        identifier: user.identifier,
+      await changePasswordRequest({
         currentPassword,
         newPassword,
-        confirmPassword,
       });
-      const body = (await response.json().catch(() => null)) as ApiEnvelope<{
-        message: string;
-      }> | null;
-      if (!response.ok) {
-        throw new Error(body?.message ?? 'Could not change password.');
-      }
       setSuccess('Password changed. Use it next time you sign in.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setTimeout(closeAll, 1400);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
+      setError(errorMessage(err, 'Could not change password.'));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleLogout() {
+    try {
+      // Clears the httpOnly session cookie on the server.
+      await logoutRequest();
+    } catch {
+      // Even if the call fails, drop the local session state.
+    }
+    logout();
+    router.push('/login');
   }
 
   return (
@@ -209,10 +204,7 @@ export function AccountMenu() {
                 <div className="my-1 border-t border-border" />
                 <button
                   type="button"
-                  onClick={() => {
-                    logout();
-                    router.push('/login');
-                  }}
+                  onClick={handleLogout}
                   className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
                 >
                   <LogOut className="h-4 w-4" />

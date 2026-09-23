@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Briefcase, Sparkles, UserRound } from 'lucide-react';
+import { Briefcase, Loader2, Sparkles, UserRound } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 import { Logo } from '@/components/logo';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { AccountMenu } from '@/features/dashboard/account-menu';
+import { meRequest } from '@/features/auth/api';
+import { errorMessage } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth';
 import { useThemeEffect } from '@/store/theme';
 
@@ -16,6 +19,10 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const user = useAuthStore((state) => state.user);
+  const hydrated = useAuthStore((state) => state.hydrated);
+  const setUser = useAuthStore((state) => state.setUser);
+  const logout = useAuthStore((state) => state.logout);
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
 
   useThemeEffect();
@@ -23,6 +30,28 @@ export default function DashboardLayout({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Hydrate the session from the httpOnly cookie exactly once per visit.
+  useEffect(() => {
+    if (hydrated) return;
+    let cancelled = false;
+
+    meRequest()
+      .then((sessionUser) => {
+        if (!cancelled) setUser(sessionUser);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        // No valid session cookie: back to sign-in.
+        console.warn(errorMessage(error, 'Session expired'));
+        logout();
+        router.replace('/login');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, setUser, logout, router]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -56,14 +85,20 @@ export default function DashboardLayout({
                 <Sparkles className="h-4 w-4" />
               </button>
               <ThemeToggle />
-              <AccountMenu />
+              {user && <AccountMenu />}
             </div>
           )}
         </div>
       </header>
 
       <main className="mx-auto max-w-[1440px] px-4 py-6 lg:py-4">
-        {children}
+        {!hydrated ? (
+          <div className="flex min-h-[40vh] items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          children
+        )}
       </main>
     </div>
   );

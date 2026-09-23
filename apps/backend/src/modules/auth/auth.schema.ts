@@ -1,26 +1,30 @@
 import { z } from 'zod';
 
-export const loginSchema = z.object({
-  email: z.string().email().optional(),
-  identifier: z.string().optional(), // Sushil's frontend sends this
-  password: z.string().min(6),
-}).refine(data => data.email || data.identifier, {
-  message: "Email or identifier is required"
-}).transform(data => ({
-  ...data,
-  email: (data.email || data.identifier) as string, // Map identifier to email internally
-}));
+/** Email or mobile, exactly as typed by the user. */
+const identifierSchema = z.string().trim().min(1, 'Email or phone is required');
 
-export const registerSchema = z.any();
-export const changePasswordSchema = z.any();
-export const updateProfileSchema = z.any();
+export const loginSchema = z.object({
+  identifier: identifierSchema,
+  password: z.string().min(6),
+});
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email(),
+  identifier: identifierSchema,
 });
 
 export const verifyOtpSchema = z.object({
-  email: z.string().email(),
+  identifier: identifierSchema,
   otp: z.string().length(6),
   newPassword: z.string().min(6),
 });
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(6),
+  newPassword: z.string().min(6),
+});
+
+export const updateProfileSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+});
+
+export const registerSchema = z.any();
