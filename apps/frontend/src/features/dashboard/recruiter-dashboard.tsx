@@ -324,7 +324,7 @@ export function RecruiterDashboard() {
             notifOpen || query.trim() ? 'z-40' : 'z-0',
           )}
         >
-          <div className="min-w-0">
+          <div className="min-w-0 w-full sm:w-auto">
             <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
               {greeting},{' '}
               <span className="text-primary">{firstName}</span>

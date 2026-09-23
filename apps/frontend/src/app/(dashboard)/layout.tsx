@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { Logo } from '@/components/logo';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { AccountMenu } from '@/features/dashboard/account-menu';
+import { MobileSettings } from '@/features/dashboard/mobile-settings';
 import { meRequest } from '@/features/auth/api';
 import { errorMessage } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth';
@@ -84,7 +85,10 @@ export default function DashboardLayout({
               >
                 <Sparkles className="h-4 w-4" />
               </button>
-              <ThemeToggle />
+              <ThemeToggle className="hidden h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground shadow-sm transition-all hover:scale-110 hover:text-primary-dark sm:flex" />
+              <div className="sm:hidden">
+                <MobileSettings />
+              </div>
               {user && <AccountMenu />}
             </div>
           )}

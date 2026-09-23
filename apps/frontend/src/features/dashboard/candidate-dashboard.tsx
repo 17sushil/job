@@ -455,7 +455,7 @@ export function CandidateDashboard() {
       <main className="min-w-0 flex-1 space-y-4 overflow-y-auto pr-1 scrollbar-slim">
         {/* Greeting + global actions */}
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="animate-fade-in-up">
+          <div className="w-full min-w-0 animate-fade-in-up sm:w-auto">
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
               {greeting}, <span className="text-primary">{firstName}</span>
             </h1>
