@@ -5,12 +5,13 @@ import { connectRedis, redisClient } from './config/redis.js';
 const start = async () => {
   try {
     await database.connect();
-    await connectRedis();
-    console.log('Redis connected successfully.');
   } catch (err) {
-    console.error('Unable to initialize connections:', err);
+    console.error('Unable to initialize the database connection:', err);
     process.exit(1);
   }
+
+  // Redis is optional: the API falls back to in-memory stores when it is down.
+  await connectRedis();
 
   const { app } = await import('./app.js');
 

@@ -19,7 +19,8 @@ export interface ApiEnvelope<T> {
 
 export interface RegisterPayload {
   identifier: string;
-  role: UserRole;
+  /** Backend enum is uppercase (CANDIDATE / RECRUITER). */
+  role: string;
   password: string;
   confirmPassword: string;
 }
@@ -62,6 +63,28 @@ export async function updateProfileRequest(identifier: string, name: string) {
 
 export async function changePasswordRequest(payload: ChangePasswordPayload) {
   return apiClient('/api/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function forgotPasswordRequest(email: string) {
+  return apiClient('/api/auth/forgot-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+}
+
+export interface VerifyOtpPayload {
+  email: string;
+  otp: string;
+  newPassword: string;
+}
+
+export async function verifyOtpRequest(payload: VerifyOtpPayload) {
+  return apiClient('/api/auth/verify-otp', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

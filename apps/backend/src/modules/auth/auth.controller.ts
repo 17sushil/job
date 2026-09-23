@@ -8,9 +8,11 @@ const userService = new UserService();
 export const login: RequestHandler = async (req, res, next) => {
   try {
     const result = await authService.login(req.body);
+    // Never send the password hash back to the client.
+    const { password, ...safeUser } = result.user;
     // Map fields for Sushil's frontend compatibility
-    const formattedUser = { 
-      ...result.user, 
+    const formattedUser = {
+      ...safeUser,
       id: result.user.userId,
       identifier: result.user.email || result.user.mobile,
       phone: result.user.mobile,

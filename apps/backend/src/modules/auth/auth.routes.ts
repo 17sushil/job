@@ -16,6 +16,9 @@ import {
 
 export const authRoutes = Router();
 
+// Apply auth-specific stricter rate limits to all auth routes.
+authRoutes.use(authRateLimiter);
+
 authRoutes.post('/register', validate(createUserSchema), register);
 authRoutes.post('/login', validate(loginSchema), login);
 authRoutes.post('/forgot-password', validate(forgotPasswordSchema), forgotPassword);

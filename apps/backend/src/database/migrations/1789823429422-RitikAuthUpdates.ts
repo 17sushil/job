@@ -10,7 +10,7 @@ export class RitikAuthUpdates1789823429422 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "name"`);
         await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "phone"`);
         await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "passwordHash"`);
-        await queryRunner.query(`ALTER TABLE "users" ADD "userId" uuid NOT NULL DEFAULT uuid_generate_v4()`);
+        await queryRunner.query(`ALTER TABLE "users" ADD "userId" uuid NOT NULL DEFAULT gen_random_uuid()`);
         await queryRunner.query(`ALTER TABLE "users" ADD CONSTRAINT "PK_8bf09ba754322ab9c22a215c919" PRIMARY KEY ("userId")`);
         await queryRunner.query(`ALTER TABLE "users" ADD "mobile" character varying NOT NULL`);
         await queryRunner.query(`ALTER TABLE "users" ADD CONSTRAINT "UQ_d376a9f93bba651f32a2c03a7d3" UNIQUE ("mobile")`);
@@ -34,7 +34,7 @@ export class RitikAuthUpdates1789823429422 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "users" ADD "passwordHash" character varying`);
         await queryRunner.query(`ALTER TABLE "users" ADD "phone" character varying`);
         await queryRunner.query(`ALTER TABLE "users" ADD "name" character varying`);
-        await queryRunner.query(`ALTER TABLE "users" ADD "id" uuid NOT NULL DEFAULT uuid_generate_v4()`);
+        await queryRunner.query(`ALTER TABLE "users" ADD "id" uuid NOT NULL DEFAULT gen_random_uuid()`);
         await queryRunner.query(`ALTER TABLE "users" ADD CONSTRAINT "PK_users_id" PRIMARY KEY ("id")`);
         await queryRunner.query(`CREATE UNIQUE INDEX "UQ_users_phone" ON "users" USING btree ("phone") WHERE (phone IS NOT NULL)`);
     }

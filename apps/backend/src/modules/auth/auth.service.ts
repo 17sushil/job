@@ -1,11 +1,16 @@
 import * as bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { z } from 'zod';
+
 import { AppError } from '../../common/errors/AppError.js';
 import { env } from '../../config/env.js';
-import { redisClient } from '../../config/redis.js';
+import { kvDel, kvGet, kvSet } from '../../config/redis.js';
 import { UserRepository } from '../user/user.repository.js';
-import { z } from 'zod';
-import { loginSchema, verifyOtpSchema, forgotPasswordSchema } from './auth.schema.js';
+import {
+  forgotPasswordSchema,
+  loginSchema,
+  verifyOtpSchema,
+} from './auth.schema.js';
 
 export class AuthService {
   private userRepo = new UserRepository();
@@ -24,7 +29,7 @@ export class AuthService {
     const token = jwt.sign(
       { userId: user.userId, role: user.role },
       env.JWT_SECRET,
-      { expiresIn: '1d' }
+      { expiresIn: '1d' },
     );
 
     return { token, user };
@@ -39,13 +44,13 @@ export class AuthService {
 
     // Generate 6 digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // Hash the OTP (Requirement: "otp hash , middleware")
+
+    // Hash the OTP before storing it
     const hashedOtp = await bcrypt.hash(otp, 10);
-    
-    // Save to Redis (expires in 10 minutes)
-    await redisClient.set(`otp:${user.email}`, hashedOtp, { EX: 600 });
-    
+
+    // Save for 10 minutes (Redis when available, memory otherwise)
+    await kvSet(`otp:${user.email}`, hashedOtp, 600);
+
     // In a real app, send via email/SMS here
     console.log(`[DEBUG] OTP for ${user.email} is ${otp}`);
 
@@ -53,7 +58,7 @@ export class AuthService {
   }
 
   async verifyOtpAndResetPassword(data: z.infer<typeof verifyOtpSchema>) {
-    const hashedOtp = await redisClient.get(`otp:${data.email}`);
+    const hashedOtp = await kvGet(`otp:${data.email}`);
     if (!hashedOtp) {
       throw new AppError(400, 'OTP expired or not requested');
     }
@@ -69,10 +74,12 @@ export class AuthService {
     }
 
     const hashedNewPassword = await bcrypt.hash(data.newPassword, 10);
-    await this.userRepo.update(user.userId, { password: hashedNewPassword });
+    await this.userRepo.update(user.userId, {
+      password: hashedNewPassword,
+    });
 
     // Delete OTP after successful use
-    await redisClient.del(`otp:${data.email}`);
+    await kvDel(`otp:${data.email}`);
 
     return { message: 'Password reset successfully' };
   }

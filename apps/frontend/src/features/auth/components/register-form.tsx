@@ -63,7 +63,7 @@ export function RegisterForm({ initialRole }: { initialRole?: UserRole }) {
       // Merge the role (extracted from the URL) into the register request.
       const response = await registerRequest({
         identifier: values.identifier,
-        role: initialRole,
+        role: initialRole.toUpperCase(),
         password: values.password,
         confirmPassword: values.confirmPassword,
       });

@@ -351,3 +351,19 @@
     stroke-dashoffset: 0;
   }
 }
+/* Slim scrollbars for sidebars and horizontal nav strips. */
+.scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+}
+.scrollbar-slim::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.scrollbar-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-slim::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.35);
+  border-radius: 9999px;
+}

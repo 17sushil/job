@@ -1,5 +1,3 @@
-import * as React from 'react';
-
 import { cn } from '@/lib/utils';
 
 /**
@@ -7,7 +5,7 @@ import { cn } from '@/lib/utils';
  * on a solid brand-green tile. It visualises the core flow:
  * upload resume → ATS match → hired, faster (the check doubles as an upward step).
  */
-function Mark({ gradientId }: { gradientId: string }) {
+function Mark() {
   return (
     <svg viewBox="0 0 48 48" aria-hidden="true" className="h-full w-full">
       <rect
@@ -54,15 +52,13 @@ export function Logo({
   showTagline = true,
   className,
 }: LogoProps) {
-  const gradientId = React.useId();
-
   return (
     <span className={cn('inline-flex items-center gap-2.5', className)}>
       <span
         className="inline-block shrink-0"
         style={{ width: size, height: size }}
       >
-        <Mark gradientId={gradientId} />
+        <Mark />
       </span>
       <span className="flex flex-col leading-none">
         <span
