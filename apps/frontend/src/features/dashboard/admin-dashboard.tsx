@@ -416,6 +416,7 @@ export function AdminDashboard() {
   const [blockedFilter, setBlockedFilter] = useState<
     'ALL' | 'ACTIVE' | 'BLOCKED'
   >('ALL');
+  const [appFilter, setAppFilter] = useState('ALL');
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<AdminUser | null>(null);
@@ -469,7 +470,11 @@ export function AdminDashboard() {
   const filteredUsers = useMemo(() => {
     const q = query.trim().toLowerCase();
     return users.filter((user) => {
-      if (roleFilter !== 'ALL' && user.role !== roleFilter) return false;
+      if (roleFilter === 'ADMINS') {
+        if (user.role !== 'ADMIN' && user.role !== 'SUPERADMIN') return false;
+      } else if (roleFilter !== 'ALL' && user.role !== roleFilter) {
+        return false;
+      }
       if (blockedFilter === 'BLOCKED' && !user.blocked) return false;
       if (blockedFilter === 'ACTIVE' && user.blocked) return false;
       if (!q) return true;
@@ -478,6 +483,23 @@ export function AdminDashboard() {
       return haystack.includes(q);
     });
   }, [users, query, roleFilter, blockedFilter]);
+
+  const filteredApplications = useMemo(() => {
+    if (appFilter === 'ALL') return applications;
+    return applications.filter((application) => application.status === appFilter);
+  }, [applications, appFilter]);
+
+  /** Overview cards deep-link into the lists with filters pre-applied. */
+  function openUsers(role?: string, blocked?: 'ALL' | 'ACTIVE' | 'BLOCKED') {
+    setRoleFilter(role ?? 'ALL');
+    setBlockedFilter(blocked ?? 'ALL');
+    setTab('users');
+  }
+
+  function openApps(status?: string) {
+    setAppFilter(status ?? 'ALL');
+    setTab('applications');
+  }
 
   async function run(action: () => Promise<string>, success: string) {
     setBusy(true);
@@ -542,23 +564,37 @@ export function AdminDashboard() {
 
         {tab === 'overview' && stats && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-            {(
-              [
-                ['Total users', stats.users, 'users'],
-                ['Candidates', stats.candidates, 'users'],
-                ['Recruiters', stats.recruiters, 'users'],
-                ['Admins', stats.admins, 'users'],
-                ['Blocked', stats.blocked, 'users'],
-                ['Jobs', stats.jobs, 'jobs'],
-                ['Open jobs', stats.openJobs, 'jobs'],
-                ['Applications', stats.applications, 'applications'],
-                ['Hired', stats.hired, 'applications'],
-              ] as Array<[string, number, Tab]>
-            ).map(([label, value, target]) => (
+            {[
+              { label: 'Total users', value: stats.users, go: () => openUsers() },
+              {
+                label: 'Candidates',
+                value: stats.candidates,
+                go: () => openUsers('CANDIDATE'),
+              },
+              {
+                label: 'Recruiters',
+                value: stats.recruiters,
+                go: () => openUsers('RECRUITER'),
+              },
+              { label: 'Admins', value: stats.admins, go: () => openUsers('ADMINS') },
+              {
+                label: 'Blocked',
+                value: stats.blocked,
+                go: () => openUsers(undefined, 'BLOCKED'),
+              },
+              { label: 'Jobs', value: stats.jobs, go: () => setTab('jobs') },
+              { label: 'Open jobs', value: stats.openJobs, go: () => setTab('jobs') },
+              {
+                label: 'Applications',
+                value: stats.applications,
+                go: () => openApps(),
+              },
+              { label: 'Hired', value: stats.hired, go: () => openApps('HIRED') },
+            ].map(({ label, value, go }) => (
               <button
                 key={label}
                 type="button"
-                onClick={() => setTab(target)}
+                onClick={go}
                 className="rounded-2xl border border-border bg-card p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md"
               >
                 <p className="text-2xl font-bold tabular-nums">{value}</p>
@@ -691,6 +727,7 @@ export function AdminDashboard() {
                 className="h-9 rounded-lg border border-border bg-card px-3 text-sm"
               >
                 <option value="ALL">All roles</option>
+                <option value="ADMINS">All admins</option>
                 {ALL_ROLES.map((role) => (
                   <option key={role} value={role}>
                     {prettyRole(role)}
@@ -912,6 +949,27 @@ export function AdminDashboard() {
         )}
 
         {tab === 'applications' && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                aria-label="Filter by application status"
+                value={appFilter}
+                onChange={(event) => setAppFilter(event.target.value)}
+                className="h-9 rounded-lg border border-border bg-card px-3 text-sm"
+              >
+                <option value="ALL">All statuses</option>
+                {['NEW', 'SHORTLISTED', 'INTERVIEW', 'HIRED', 'REJECTED'].map(
+                  (status) => (
+                    <option key={status} value={status}>
+                      {status.charAt(0) + status.slice(1).toLowerCase()}
+                    </option>
+                  ),
+                )}
+              </select>
+              <span className="text-xs text-muted-foreground">
+                {filteredApplications.length} of {applications.length} shown
+              </span>
+            </div>
           <div className="overflow-x-auto rounded-2xl border border-border bg-card">
             <table className="w-full min-w-[640px] text-sm">
               <thead>
@@ -924,7 +982,7 @@ export function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {applications.map((application) => {
+                {filteredApplications.map((application) => {
                   const job = jobs.find(
                     (entry) => entry.jobId === application.jobId,
                   );
@@ -960,18 +1018,19 @@ export function AdminDashboard() {
                     </tr>
                   );
                 })}
-                {applications.length === 0 && (
+                {filteredApplications.length === 0 && (
                   <tr>
                     <td
                       colSpan={5}
                       className="px-4 py-8 text-center text-sm text-muted-foreground"
                     >
-                      No applications yet.
+                      No applications match this filter.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+          </div>
           </div>
         )}
 
