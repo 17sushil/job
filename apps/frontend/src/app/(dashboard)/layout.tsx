@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Briefcase, Loader2, Sparkles, UserRound } from 'lucide-react';
+import { Briefcase, Loader2, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { Logo } from '@/components/logo';
@@ -68,11 +68,19 @@ export default function DashboardLayout({
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-light px-3 py-1 text-xs font-semibold text-primary-dark">
                   {user.role === 'recruiter' ? (
                     <Briefcase className="h-3.5 w-3.5" />
+                  ) : user.role === 'admin' || user.role === 'superadmin' ? (
+                    <ShieldCheck className="h-3.5 w-3.5" />
                   ) : (
                     <UserRound className="h-3.5 w-3.5" />
                   )}
                   <span className="hidden sm:inline">
-                    {user.role === 'recruiter' ? 'Recruiter' : 'Job seeker'}
+                    {user.role === 'recruiter'
+                      ? 'Recruiter'
+                      : user.role === 'superadmin'
+                        ? 'Super admin'
+                        : user.role === 'admin'
+                          ? 'Admin'
+                          : 'Job seeker'}
                   </span>
                 </span>
               )}
