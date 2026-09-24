@@ -36,6 +36,10 @@ export default function LoginPage() {
             Admin: <span className="font-mono">admin@jobdev.app</span> /{' '}
             <span className="font-mono">Admin12345</span>
           </li>
+          <li>
+            Super admin: <span className="font-mono">superadmin@jobdev.app</span>{' '}
+            / <span className="font-mono">Super12345</span>
+          </li>
         </ul>
       </details>
 

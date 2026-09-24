@@ -35,6 +35,10 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   name!: string | null;
 
+  /** Blocked accounts cannot sign in or use the session endpoints. */
+  @Column({ type: 'boolean', default: false })
+  blocked!: boolean;
+
   @Column({ type: 'varchar' })
   password!: string;
 

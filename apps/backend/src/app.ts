@@ -6,9 +6,14 @@ import helmet from 'helmet';
 import { AppDataSource } from './database/data-source.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { globalRateLimiter } from './middlewares/rateLimiter.js';
+import {
+  authMiddleware,
+  requireRole,
+} from './middlewares/auth.middleware.js';
 import { adminRoutes } from './modules/admin/admin.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { recruiterRoutes } from './modules/recruiter/recruiter.routes.js';
+import { UserRole } from './modules/user/user.entity.js';
 import { userRoutes } from './modules/user/user.routes.js';
 
 export const app = express();
@@ -51,7 +56,12 @@ app.get('/health', async (_req, res) => {
   });
 });
 
-app.use('/api/users', userRoutes);
+app.use(
+  '/api/users',
+  authMiddleware,
+  requireRole(UserRole.ADMIN, UserRole.SUPERADMIN),
+  userRoutes,
+);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api', recruiterRoutes);

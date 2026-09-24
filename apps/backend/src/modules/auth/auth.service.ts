@@ -31,6 +31,10 @@ export class AuthService {
       throw new AppError(401, 'Invalid email or password');
     }
 
+    if (user.blocked) {
+      throw new AppError(403, 'This account has been blocked by an admin');
+    }
+
     const isMatch = await bcrypt.compare(data.password, user.password);
     if (!isMatch) {
       throw new AppError(401, 'Invalid email or password');
@@ -49,6 +53,9 @@ export class AuthService {
     const user = await this.userRepo.findById(userId);
     if (!user) {
       throw new AppError(401, 'Session is no longer valid');
+    }
+    if (user.blocked) {
+      throw new AppError(403, 'This account has been blocked by an admin');
     }
     return user;
   }

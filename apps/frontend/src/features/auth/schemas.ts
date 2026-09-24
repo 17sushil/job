@@ -2,8 +2,11 @@ import { z } from 'zod';
 
 const phoneRegex = /^[+]?[0-9\s()-]{7,15}$/;
 
+/** Roles offered on the public role chooser. */
 export const USER_ROLES = ['candidate', 'recruiter'] as const;
-export type UserRole = (typeof USER_ROLES)[number];
+
+/** Every role a signed-in session can have (admin consoles included). */
+export type UserRole = 'candidate' | 'recruiter' | 'admin' | 'superadmin';
 
 /** Accepts either a valid email or a phone number. */
 const identifierSchema = z

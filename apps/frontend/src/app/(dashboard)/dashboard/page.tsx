@@ -25,6 +25,14 @@ const RecruiterDashboard = dynamic(
   { ssr: false },
 );
 
+const AdminDashboard = dynamic(
+  () =>
+    import('@/features/dashboard/admin-dashboard').then(
+      (module) => module.AdminDashboard,
+    ),
+  { ssr: false },
+);
+
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
 
@@ -32,6 +40,10 @@ export default function DashboardPage() {
   // redirects to /login when there is none; render nothing until then.
   if (!user) {
     return null;
+  }
+
+  if (user.role === 'admin' || user.role === 'superadmin') {
+    return <AdminDashboard />;
   }
 
   return user.role === 'recruiter' ? (

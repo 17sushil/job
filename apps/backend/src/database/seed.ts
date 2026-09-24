@@ -32,6 +32,13 @@ export const TEAM_ACCOUNTS = [
     role: UserRole.ADMIN,
     password: 'Admin12345',
   },
+  {
+    email: 'superadmin@jobdev.app',
+    mobile: '+9779800000004',
+    name: 'Super Admin',
+    role: UserRole.SUPERADMIN,
+    password: 'Super12345',
+  },
 ] as const;
 
 /** Idempotent: only inserts accounts that do not exist yet. */
