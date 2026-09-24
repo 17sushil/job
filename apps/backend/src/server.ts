@@ -1,6 +1,7 @@
 import { database } from './config/database.js';
 import { env } from './config/env.js';
 import { connectRedis, redisClient } from './config/redis.js';
+import { seedTeamAccounts } from './database/seed.js';
 
 const start = async () => {
   try {
@@ -8,6 +9,13 @@ const start = async () => {
   } catch (err) {
     console.error('Unable to initialize the database connection:', err);
     process.exit(1);
+  }
+
+  // Shared demo/team logins: always available, never wiped by restarts.
+  try {
+    await seedTeamAccounts();
+  } catch (err) {
+    console.warn('Seeding skipped:', err);
   }
 
   // Redis is optional: the API falls back to in-memory stores when it is down.

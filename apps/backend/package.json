@@ -8,6 +8,7 @@
     "migration:generate": "tsx node_modules/typeorm/cli.js -d src/database/data-source.ts migration:generate",
     "migration:run": "tsx node_modules/typeorm/cli.js -d src/database/data-source.ts migration:run",
     "migration:revert": "tsx node_modules/typeorm/cli.js -d src/database/data-source.ts migration:revert",
+    "seed": "tsx src/database/seed-cli.ts",
     "lint": "eslint src",
     "test": "vitest run"
   },

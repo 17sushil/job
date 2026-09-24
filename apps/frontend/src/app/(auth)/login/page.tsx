@@ -19,6 +19,26 @@ export default function LoginPage() {
 
       <LoginForm />
 
+      <details className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
+        <summary className="cursor-pointer select-none font-semibold text-muted-foreground">
+          Shared team logins (demo)
+        </summary>
+        <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+          <li>
+            Candidate: <span className="font-mono">candidate@jobdev.app</span>{' '}
+            / <span className="font-mono">Candidate123</span>
+          </li>
+          <li>
+            Recruiter: <span className="font-mono">recruiter@jobdev.app</span>{' '}
+            / <span className="font-mono">Recruiter123</span>
+          </li>
+          <li>
+            Admin: <span className="font-mono">admin@jobdev.app</span> /{' '}
+            <span className="font-mono">Admin12345</span>
+          </li>
+        </ul>
+      </details>
+
       <p className="text-center text-sm text-muted-foreground">
         New to JobDev?{' '}
         <Link
