@@ -73,7 +73,7 @@ export const logout: RequestHandler = (_req, res) => {
 export const updateProfile: RequestHandler = async (req, res, next) => {
   try {
     const { userId } = requireUser(req as AuthRequest);
-    const user = await authService.updateName(userId, req.body.name);
+    const user = await authService.updateProfile(userId, req.body);
     res.json({ success: true, data: { user: sanitizeUser(user) } });
   } catch (error) {
     next(error);

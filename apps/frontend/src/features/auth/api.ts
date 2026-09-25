@@ -9,6 +9,9 @@ export interface AuthUser {
   phone: string | null;
   name: string | null;
   role: UserRole;
+  companyName: string | null;
+  contactNumber: string | null;
+  avatar: string | null;
 }
 
 /**
@@ -22,6 +25,9 @@ export interface SafeUser {
   email: string | null;
   mobile: string | null;
   name: string | null;
+  companyName?: string | null;
+  contactNumber?: string | null;
+  avatar?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -35,6 +41,9 @@ export function toAuthUser(safe: SafeUser): AuthUser {
     phone: safe.mobile,
     name: safe.name,
     role: safe.role.toLowerCase() as UserRole,
+    companyName: safe.companyName ?? null,
+    contactNumber: safe.contactNumber ?? null,
+    avatar: safe.avatar ?? null,
   };
 }
 
@@ -94,10 +103,15 @@ export async function logoutRequest() {
   await apiClient.post('/api/auth/logout');
 }
 
-export async function updateProfileRequest(name: string) {
+export async function updateProfileRequest(payload: {
+  name?: string;
+  companyName?: string;
+  contactNumber?: string;
+  avatar?: string;
+}) {
   const { data } = await apiClient.patch<ApiEnvelope<UserEnvelope>>(
     '/api/auth/profile',
-    { name },
+    payload,
   );
   return toAuthUser(data.data!.user);
 }

@@ -9,6 +9,10 @@ import { Logo } from '@/components/logo';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { AccountMenu } from '@/features/dashboard/account-menu';
 import { MobileSettings } from '@/features/dashboard/mobile-settings';
+import {
+  RecruiterProfileForm,
+  recruiterProfileIncomplete,
+} from '@/features/dashboard/recruiter-profile-form';
 import { meRequest } from '@/features/auth/api';
 import { errorMessage } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth';
@@ -112,6 +116,25 @@ export default function DashboardLayout({
           children
         )}
       </main>
+
+      {/* Recruiters must complete their profile before anything else. */}
+      {mounted && user?.role === 'recruiter' && recruiterProfileIncomplete(user) && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/60 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Complete your recruiter profile"
+            className="animate-pop-in max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl"
+          >
+            <h3 className="text-lg font-bold">Complete your recruiter profile</h3>
+            <p className="mb-4 mt-1 text-sm text-muted-foreground">
+              Add your company name, a contact number and a profile image to
+              unlock the dashboard. Candidates see these on your job posts.
+            </p>
+            <RecruiterProfileForm />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

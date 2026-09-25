@@ -30,6 +30,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
+import { RecruiterProfileForm } from '../recruiter-profile-form';
 import { HelpCard } from './sidebar';
 import {
   INITIAL_CONVERSATIONS,
@@ -985,49 +986,24 @@ export function MessagesView() {
 export function CompanyView() {
   const [saved, setSaved] = useState(false);
 
-  function save(event: React.FormEvent) {
-    event.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  }
-
   return (
-    <form
-      onSubmit={save}
-      className="animate-fade-in-up max-w-2xl space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm"
-    >
+    <div className="animate-fade-in-up max-w-2xl space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
       <h2 className="text-xl font-bold">Company profile</h2>
       <p className="text-sm text-muted-foreground">
         This is what candidates see on your job posts.
       </p>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="co-name">Company name</Label>
-          <Input id="co-name" defaultValue="JobDev Labs Pvt. Ltd." />
-        </div>
-        <div>
-          <Label htmlFor="co-site">Website</Label>
-          <Input id="co-site" defaultValue="https://jobdev.app" />
-        </div>
-        <div className="sm:col-span-2">
-          <Label htmlFor="co-about">About</Label>
-          <textarea
-            id="co-about"
-            rows={4}
-            defaultValue="We build hiring tools that treat candidates like humans, not rows in a spreadsheet."
-            className="flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        <Button type="submit">Save profile</Button>
-        {saved && (
-          <span className="animate-pop-in inline-flex items-center gap-1.5 text-sm font-medium text-success">
-            <Check className="h-4 w-4" /> Saved
-          </span>
-        )}
-      </div>
-    </form>
+      <RecruiterProfileForm
+        onSaved={() => {
+          setSaved(true);
+          setTimeout(() => setSaved(false), 2500);
+        }}
+      />
+      {saved && (
+        <span className="animate-pop-in inline-flex items-center gap-1.5 text-sm font-medium text-success">
+          <Check className="h-4 w-4" /> Saved
+        </span>
+      )}
+    </div>
   );
 }
 

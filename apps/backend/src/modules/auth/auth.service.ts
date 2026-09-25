@@ -12,6 +12,7 @@ import {
   forgotPasswordSchema,
   loginSchema,
   pickIdentifier,
+  updateProfileSchema,
   verifyOtpSchema,
 } from './auth.schema.js';
 
@@ -122,7 +123,10 @@ export class AuthService {
     return { message: 'Password changed successfully' };
   }
 
-  async updateName(userId: string, name: string) {
-    return this.userRepo.update(userId, { name });
+  async updateProfile(
+    userId: string,
+    data: z.infer<typeof updateProfileSchema>,
+  ) {
+    return this.userRepo.update(userId, { ...data });
   }
 }

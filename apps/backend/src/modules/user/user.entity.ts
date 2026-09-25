@@ -39,6 +39,17 @@ export class User {
   @Column({ type: 'boolean', default: false })
   blocked!: boolean;
 
+  /** Recruiter profile fields shown on job posts. */
+  @Column({ type: 'varchar', nullable: true })
+  companyName!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  contactNumber!: string | null;
+
+  /** Data URL of the uploaded profile image. */
+  @Column({ type: 'text', nullable: true })
+  avatar!: string | null;
+
   @Column({ type: 'varchar' })
   password!: string;
 

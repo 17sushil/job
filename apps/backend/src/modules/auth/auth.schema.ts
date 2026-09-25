@@ -47,7 +47,14 @@ export const changePasswordSchema = z.object({
 });
 
 export const updateProfileSchema = z.object({
-  name: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(80).optional(),
+  companyName: z.string().trim().min(2).max(80).optional(),
+  contactNumber: z
+    .string()
+    .trim()
+    .regex(/^[+]?[0-9\s()-]{7,15}$/, 'Enter a valid phone number')
+    .optional(),
+  avatar: z.string().max(400000).optional(),
 });
 
 export const registerSchema = z.any();

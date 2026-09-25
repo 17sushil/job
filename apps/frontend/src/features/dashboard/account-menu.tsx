@@ -98,7 +98,7 @@ export function AccountMenu() {
     setBusy(true);
     setError('');
     try {
-      const updated = await updateProfileRequest(name.trim());
+      const updated = await updateProfileRequest({ name: name.trim() });
       setUser(updated);
       setSuccess('Profile updated.');
       setTimeout(closeAll, 900);
