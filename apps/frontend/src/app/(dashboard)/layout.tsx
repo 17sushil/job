@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+  Bell,
   Briefcase,
   Building2,
   LogOut,
+  Settings,
   ShieldCheck,
   UserRound,
 } from 'lucide-react';
@@ -157,6 +159,34 @@ export default function DashboardLayout({
                 {ROLE_LABELS[user.role] ?? user.role}
               </span>
             </span>
+            {user.role === 'candidate' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.dispatchEvent(new CustomEvent('jobdev:notifications'))
+                  }
+                  title="Notifications"
+                  aria-label="Notifications"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-primary-dark"
+                >
+                  <Bell className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent('jobdev:view', { detail: 'settings' }),
+                    )
+                  }
+                  title="Settings"
+                  aria-label="Settings"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-primary-dark"
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
+              </>
+            )}
             <ThemeToggle />
             <button
               type="button"

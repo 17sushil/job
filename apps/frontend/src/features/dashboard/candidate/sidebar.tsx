@@ -6,12 +6,10 @@ import {
   CalendarCheck,
   Compass,
   FileSearch,
-  Gauge,
   HelpCircle,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
-  MessageSquare,
   Settings,
   Sparkles,
   UserRound,
@@ -26,8 +24,6 @@ export type CandidateView =
   | 'resume'
   | 'saved'
   | 'jobs'
-  | 'messages'
-  | 'insights'
   | 'profile'
   | 'settings'
   | 'help';
@@ -39,13 +35,11 @@ export const NAV_ITEMS: Array<{
   section: 'main' | 'general';
 }> = [
   { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
+  { id: 'jobs', label: 'Find jobs', icon: Compass, section: 'main' },
   { id: 'applications', label: 'My applications', icon: Briefcase, section: 'main' },
   { id: 'interviews', label: 'Interviews', icon: CalendarCheck, section: 'main' },
-  { id: 'resume', label: 'ATS resume', icon: FileSearch, section: 'main' },
+  { id: 'resume', label: 'Build resume', icon: FileSearch, section: 'main' },
   { id: 'saved', label: 'Saved jobs', icon: Bookmark, section: 'main' },
-  { id: 'jobs', label: 'Find jobs', icon: Compass, section: 'main' },
-  { id: 'messages', label: 'Messages', icon: MessageSquare, section: 'main' },
-  { id: 'insights', label: 'Insights', icon: Gauge, section: 'main' },
   { id: 'profile', label: 'My profile', icon: UserRound, section: 'general' },
   { id: 'settings', label: 'Settings', icon: Settings, section: 'general' },
   { id: 'help', label: 'Help & support', icon: LifeBuoy, section: 'general' },

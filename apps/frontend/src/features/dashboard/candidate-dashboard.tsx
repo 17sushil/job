@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Bell,
   Bookmark,
   Briefcase,
   CalendarCheck,
@@ -11,16 +10,12 @@ import {
   Download,
   Eye,
   FileCheck2,
-  Gauge,
-  Send,
   Sparkles,
   UploadCloud,
-  Video,
   X,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { apiGet, apiPost, type JobRow } from '@/features/dashboard/shared';
 import { CandidateProfileGate } from '@/features/dashboard/candidate-profile-gate';
 import { useCountUp } from '@/lib/use-count-up';
@@ -32,9 +27,7 @@ import {
   type Application,
   type ApplicationStatus,
   type CandidateProfile,
-  INITIAL_ACTIVITY,
   INITIAL_APPLICATIONS,
-  INITIAL_CONVERSATIONS,
   INITIAL_INTERVIEWS,
   INITIAL_JOBS,
   INITIAL_NOTIFICATIONS,
@@ -45,7 +38,6 @@ import {
   profileCompleteness,
   PROFILE_CHECKLIST,
   type ChecklistItem,
-  type Conversation,
   type Notification,
 } from './candidate/mock-data';
 import { Sidebar as CandidateSidebar, type CandidateView } from './candidate/sidebar';
@@ -57,16 +49,13 @@ import {
 } from './candidate/ats-service';
 import { ApplicationsTrend } from './candidate/charts';
 import {
-  ActivityFeed,
   ApplicationDrawer,
   ApplicationsView,
   EmptyState,
   HelpView,
-  InsightsView,
   InterviewsView,
   JobDrawer,
   JobsView,
-  MessagesView,
   ProfileView,
   SavedJobsView,
   SectionCard,
@@ -252,7 +241,7 @@ export function CandidateDashboard() {
   const [jobs, setJobs] = useState<JobPosting[]>(INITIAL_JOBS);
   const [applications, setApplications] = useState<Application[]>(INITIAL_APPLICATIONS);
   const [savedIds, setSavedIds] = useState<string[]>(INITIAL_SAVED_IDS);
-  const [conversations, setConversations] = useState<Conversation[]>(INITIAL_CONVERSATIONS);
+
   const [checklist, setChecklist] = useState<ChecklistItem[]>(() =>
     PROFILE_CHECKLIST.map((item) => ({ ...item, done: false })),
   );
@@ -365,7 +354,7 @@ export function CandidateDashboard() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
-  const [query, setQuery] = useState('');
+
   const [keywordFilters, setKeywordFilters] = useState<string[]>([]);
   const [jobSearch, setJobSearch] = useState('');
 
@@ -421,32 +410,28 @@ export function CandidateDashboard() {
       return keywordMatch && textMatch;
     });
   }, [jobs, keywordFilters, jobSearch]);
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  /* Close the search dropdown on outside click / Escape so an open result list
-     never blocks the page behind it. */
-  useEffect(() => {
-    function onPointerDown(event: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setQuery('');
-      }
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') setQuery('');
-    }
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, []);
 
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 4000);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  /* The navbar bell + gear live in the shared layout; they drive this
+     dashboard through custom events so every role keeps its own UI. */
+  useEffect(() => {
+    const onView = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail) setView(detail as CandidateView);
+    };
+    const onNotifications = () => setNotifOpen((value) => !value);
+    window.addEventListener('jobdev:view', onView);
+    window.addEventListener('jobdev:notifications', onNotifications);
+    return () => {
+      window.removeEventListener('jobdev:view', onView);
+      window.removeEventListener('jobdev:notifications', onNotifications);
+    };
+  }, []);
 
   const firstName =
     (user?.name || user?.identifier || 'there').split(/[@\s]/)[0] || 'there';
@@ -465,10 +450,6 @@ export function CandidateDashboard() {
   const upcomingInterviews = INITIAL_INTERVIEWS.filter((interview) => interview.inDays >= 0);
   const activeApplications = applications.filter((application) =>
     ACTIVE_STATUSES.includes(application.status),
-  );
-  const unreadMessages = conversations.reduce(
-    (sum, conversation) => sum + conversation.unread,
-    0,
   );
   const avgMatch = Math.round(
     applications.reduce((sum, application) => sum + application.match, 0) /
@@ -512,28 +493,13 @@ export function CandidateDashboard() {
       value: 0,
       delta: `Profile ${completeness}% complete`,
       icon: Eye,
-      hint: 'Open your insights',
-      go: () => setView('insights'),
+      hint: 'Open your profile',
+      go: () => setView('profile'),
     },
   ];
 
   /* Working global search: matches open roles + your applications, click to jump in. */
-  const searchResults = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return null;
-    return {
-      jobs: jobs
-        .filter((job) => job.title.toLowerCase().includes(q))
-        .slice(0, 4),
-      applications: applications
-        .filter(
-          (application) =>
-            application.title.toLowerCase().includes(q) ||
-            application.company.toLowerCase().includes(q),
-        )
-        .slice(0, 4),
-    };
-  }, [query, jobs, applications]);
+
 
   const unread = notifications.filter((notification) => !notification.read).length;
 
@@ -591,22 +557,6 @@ export function CandidateDashboard() {
     setToast('Application withdrawn — the recruiter has been notified');
   }
 
-  function sendMessage(conversationId: string, text: string) {
-    setConversations((current) =>
-      current.map((conversation) =>
-        conversation.id === conversationId
-          ? {
-              ...conversation,
-              unread: 0,
-              messages: [
-                ...conversation.messages,
-                { from: 'me' as const, text, time: 'now' },
-              ],
-            }
-          : conversation,
-      ),
-    );
-  }
 
   function toggleChecklistItem(key: string) {
     setChecklist((current) =>
@@ -653,7 +603,6 @@ export function CandidateDashboard() {
           applications: activeApplications.length,
           interviews: upcomingInterviews.length,
           saved: savedIds.length,
-          messages: unreadMessages,
         }}
         strengthPercent={completeness}
         missingSignals={missingSignals}
@@ -676,92 +625,11 @@ export function CandidateDashboard() {
           </div>
 
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
-            <div className="relative min-w-0 flex-1 sm:flex-none" ref={searchRef}>
-              <Compass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search jobs, companies…"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="w-full pl-9 sm:w-56"
-              />
-              {searchResults && (
-                <div className="animate-pop-in absolute left-0 right-0 top-full z-30 mt-2 max-h-80 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl scrollbar-slim">
-                  {searchResults.jobs.length === 0 &&
-                    searchResults.applications.length === 0 && (
-                      <p className="p-3 text-center text-xs text-muted-foreground">
-                        No matches for “{query}”.
-                      </p>
-                    )}
-                  {searchResults.jobs.length > 0 && (
-                    <p className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                      Open roles
-                    </p>
-                  )}
-                  {searchResults.jobs.map((job) => (
-                    <button
-                      key={job.id}
-                      type="button"
-                      onClick={() => {
-                        setQuery('');
-                        setSelectedJob(job);
-                      }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-primary-light"
-                    >
-                      <Briefcase className="h-4 w-4 shrink-0 text-primary" />
-                      <span className="truncate font-medium">{job.title}</span>
-                      <span className="ml-auto shrink-0 text-xs font-semibold text-muted-foreground">
-                        {job.match}% match
-                      </span>
-                    </button>
-                  ))}
-                  {searchResults.applications.length > 0 && (
-                    <p className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                      My applications
-                    </p>
-                  )}
-                  {searchResults.applications.map((application) => (
-                    <button
-                      key={application.id}
-                      type="button"
-                      onClick={() => {
-                        setQuery('');
-                        setView('applications');
-                        setSelectedApplication(application);
-                      }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-primary-light"
-                    >
-                      <Send className="h-4 w-4 shrink-0 text-primary" />
-                      <span className="truncate font-medium">
-                        {application.title} · {application.company}
-                      </span>
-                      <span className="ml-auto shrink-0">
-                        <StatusChip status={application.status} />
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Notifications */}
-            <div className="relative">
-              <button
-                type="button"
-                aria-label={`Notifications (${unread} unread)`}
-                onClick={() => setNotifOpen((value) => !value)}
-                className="relative rounded-xl border border-border bg-card p-2.5 text-muted-foreground transition-all hover:scale-105 hover:text-primary-dark"
-              >
-                <Bell className="h-4 w-4" />
-                {unread > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 animate-pulse-dot items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
-                    {unread}
-                  </span>
-                )}
-              </button>
+            <div>
               {notifOpen && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setNotifOpen(false)} />
-                  <div className="animate-pop-in absolute right-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+                  <div className="animate-pop-in fixed right-4 top-16 z-50 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl">
                     <div className="flex items-center justify-between border-b border-border bg-muted/50 px-4 py-3">
                       <p className="text-sm font-bold">Notifications</p>
                       <button
@@ -896,113 +764,6 @@ export function CandidateDashboard() {
                   </Button>
                 </div>
               )}
-            </SectionCard>
-
-            <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
-              <div
-                className="animate-fade-in-up rounded-2xl border border-border bg-card p-5 shadow-sm"
-                style={{ animationDelay: '200ms' }}
-              >
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold">Your activity</h3>
-                  <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-primary" />
-                      Applications
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-info" />
-                      Profile views
-                    </span>
-                  </div>
-                </div>
-                <ApplicationsTrend />
-                <div className="mt-3 border-t border-border pt-3">
-                  <StagePills counts={counts} onPick={() => setView('applications')} />
-                </div>
-              </div>
-
-              <div
-                className="animate-fade-in-up rounded-2xl border border-border bg-card p-5 shadow-sm"
-                style={{ animationDelay: '280ms' }}
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold">Recent activity</h3>
-                  <button
-                    type="button"
-                    onClick={() => setView('insights')}
-                    className="text-xs font-semibold text-primary hover:text-primary-hover"
-                  >
-                    View insights
-                  </button>
-                </div>
-                <div className="max-h-80 overflow-y-auto pr-1 scrollbar-slim">
-                  <ActivityFeed items={INITIAL_ACTIVITY.slice(0, 5)} />
-                </div>
-              </div>
-            </div>
-
-            {/* Next actions */}
-            <SectionCard
-              title="Next best actions"
-              subtitle="The three things most likely to move your search forward"
-              delay={340}
-            >
-              <div className="grid gap-3 sm:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={() => setView('interviews')}
-                  className="group flex items-start gap-3 rounded-xl border border-border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">
-                    <Video className="h-4 w-4" />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-semibold">
-                      Prep for {upcomingInterviews[0]?.company ?? 'your next interview'}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {upcomingInterviews[0]
-                        ? `${upcomingInterviews[0].date} at ${upcomingInterviews[0].time}`
-                        : 'No interviews booked yet'}
-                    </span>
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setView('profile')}
-                  className="group flex items-start gap-3 rounded-xl border border-border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-light text-primary-dark">
-                    <Sparkles className="h-4 w-4" />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-semibold">
-                      Lift your profile to 100%
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {missingSignals} signal{missingSignals === 1 ? '' : 's'} left
-                    </span>
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setView('insights')}
-                  className="group flex items-start gap-3 rounded-xl border border-border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info">
-                    <Gauge className="h-4 w-4" />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-semibold">Close your Docker gap</span>
-                    <span className="block text-xs text-muted-foreground">
-                      Asked for in 6 of your matched roles
-                    </span>
-                  </span>
-                </button>
-              </div>
             </SectionCard>
 
             {/* Recommendations */}
@@ -1178,19 +939,7 @@ export function CandidateDashboard() {
           </div>
         )}
 
-        {view === 'messages' && (
-          <MessagesView conversations={conversations} onSend={sendMessage} />
-        )}
 
-        {view === 'insights' && (
-          <InsightsView
-            counts={counts}
-            profilePercent={completeness}
-            responseRate={0}
-            avgReplyDays={0}
-            avgMatch={avgMatch}
-          />
-        )}
 
         {view === 'profile' && (
           <ProfileView
