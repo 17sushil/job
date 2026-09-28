@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api-client';
 
-import type { UserRole } from './schemas';
+export type UserRole = 'candidate' | 'recruiter' | 'admin' | 'superadmin';
 
 export interface AuthUser {
   id: string;
@@ -9,9 +9,14 @@ export interface AuthUser {
   phone: string | null;
   name: string | null;
   role: UserRole;
+  companyName: string | null;
+  contactNumber: string | null;
+  avatar: string | null;
+  createdAt: string;
 }
 
 export interface ApiEnvelope<T> {
+  success?: boolean;
   data?: T;
   message?: string;
   errors?: Array<{ field: string; message: string }>;
@@ -19,51 +24,72 @@ export interface ApiEnvelope<T> {
 
 export interface RegisterPayload {
   identifier: string;
-  role: UserRole;
   password: string;
-  confirmPassword: string;
+  role: 'candidate' | 'recruiter';
 }
 
-export interface LoginResult {
-  user: AuthUser;
-  token: string;
+export interface UpdateProfilePayload {
+  name?: string;
+  companyName?: string;
+  contactNumber?: string;
+  avatar?: string;
 }
 
-export interface ChangePasswordPayload {
-  identifier: string;
-  currentPassword: string;
-  newPassword: string;
-  confirmPassword: string;
+const jsonInit = (body: unknown): RequestInit => ({
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
+export async function readApiError(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as ApiEnvelope<never>;
+    return (
+      body.message ??
+      body.errors?.[0]?.message ??
+      `Request failed (${res.status})`
+    );
+  } catch {
+    return `Request failed (${res.status})`;
+  }
 }
 
 export async function registerRequest(payload: RegisterPayload) {
   return apiClient('/api/auth/register', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    ...jsonInit(payload),
   });
 }
 
 export async function loginRequest(identifier: string, password: string) {
   return apiClient('/api/auth/login', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identifier, password }),
+    ...jsonInit({ identifier, password }),
   });
 }
 
-export async function updateProfileRequest(identifier: string, name: string) {
+export async function verifyOtpRequest(identifier: string, otp: string) {
+  return apiClient('/api/auth/verify-otp', {
+    method: 'POST',
+    ...jsonInit({ identifier, otp }),
+  });
+}
+
+export async function meRequest() {
+  return apiClient('/api/auth/me');
+}
+
+export async function logoutRequest() {
+  return apiClient('/api/auth/logout', { method: 'POST' });
+}
+
+export async function updateProfileRequest(payload: UpdateProfilePayload) {
   return apiClient('/api/auth/profile', {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identifier, name }),
+    ...jsonInit(payload),
   });
 }
 
-export async function changePasswordRequest(payload: ChangePasswordPayload) {
-  return apiClient('/api/auth/change-password', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-}
+export const recruiterProfileIncomplete = (user: AuthUser | null) =>
+  !!user &&
+  user.role === 'recruiter' &&
+  (!user.companyName || !user.contactNumber || !user.avatar);
