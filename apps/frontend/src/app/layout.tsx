@@ -1,7 +1,8 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import { Toaster } from 'react-hot-toast';
+
+import { Toaster } from '@/components/ui/toaster';
 
 export const metadata: Metadata = {
   title: {
@@ -21,24 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         suppressHydrationWarning
       >
         {children}
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            duration: 3200,
-            style: {
-              background: 'hsl(var(--card))',
-              color: 'hsl(var(--card-foreground))',
-              border: '1px solid hsl(var(--border))',
-              fontSize: '14px',
-            },
-            success: {
-              iconTheme: { primary: 'hsl(var(--success))', secondary: '#fff' },
-            },
-            error: {
-              iconTheme: { primary: 'hsl(var(--destructive))', secondary: '#fff' },
-            },
-          }}
-        />
+        <Toaster />
       </body>
     </html>
   );

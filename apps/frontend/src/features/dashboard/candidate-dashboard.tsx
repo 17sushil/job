@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Briefcase, MapPin } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { toast } from '@/components/ui/use-toast';
 
 import { Card, CardContent } from '@/components/ui/card';
 import type { AuthUser } from '@/features/auth/api';
@@ -21,7 +21,9 @@ export function CandidateDashboard({ user }: { user: AuthUser }) {
   useEffect(() => {
     apiGet<{ jobs: JobRow[] }>('/api/jobs')
       .then((data) => setJobs(data.jobs))
-      .catch((error: Error) => toast.error(error.message))
+      .catch((error: Error) =>
+        toast({ title: error.message, variant: 'destructive' }),
+      )
       .finally(() => setLoading(false));
   }, []);
 

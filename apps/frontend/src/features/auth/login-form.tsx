@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import toast from 'react-hot-toast';
+import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +22,7 @@ export function LoginForm() {
     event.preventDefault();
 
     if (!identifier.trim() || !password) {
-      toast.error('Enter your email/phone and password');
+      toast({ title: 'Enter your email/phone and password', variant: 'destructive' });
       return;
     }
 
@@ -31,14 +31,14 @@ export function LoginForm() {
       const res = await loginRequest(identifier.trim(), password);
 
       if (!res.ok) {
-        toast.error(await readApiError(res));
+        toast({ title: await readApiError(res), variant: 'destructive' });
         return;
       }
 
-      toast.success('Password verified. Enter the OTP sent to you.');
+      toast({ title: 'Password verified. Enter the OTP sent to you.', variant: 'success' });
       setStep('otp');
     } catch {
-      toast.error('Network error. Please try again.');
+      toast({ title: 'Network error. Please try again.', variant: 'destructive' });
     } finally {
       setSubmitting(false);
     }
@@ -52,7 +52,7 @@ export function LoginForm() {
         backLabel="Back to password"
         onBack={() => setStep('credentials')}
         onVerified={() => {
-          toast.success('Logged in successfully');
+          toast({ title: 'Logged in successfully', variant: 'success' });
           router.push('/dashboard');
         }}
       />

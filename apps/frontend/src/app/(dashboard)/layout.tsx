@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   UserRound,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { toast } from '@/components/ui/use-toast';
 
 import { Logo } from '@/components/logo';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -76,7 +76,7 @@ export default function DashboardLayout({
       await logoutRequest();
     } finally {
       clearUser();
-      toast.success('Logged out');
+      toast({ title: 'Logged out', variant: 'success' });
       router.replace('/login');
     }
   };

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ShieldPlus } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,11 +22,11 @@ export function SuperAdminDashboard({ user }: { user: AuthUser }) {
     event.preventDefault();
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      toast.error('Enter a valid email');
+      toast({ title: 'Enter a valid email', variant: 'destructive' });
       return;
     }
     if (password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+      toast({ title: 'Password must be at least 6 characters', variant: 'destructive' });
       return;
     }
 
@@ -43,17 +43,17 @@ export function SuperAdminDashboard({ user }: { user: AuthUser }) {
       });
 
       if (!res.ok) {
-        toast.error(await readApiError(res));
+        toast({ title: await readApiError(res), variant: 'destructive' });
         return;
       }
 
-      toast.success('Admin account created');
+      toast({ title: 'Admin account created', variant: 'success' });
       setEmail('');
       setName('');
       setPassword('');
       window.location.reload();
     } catch {
-      toast.error('Network error. Please try again.');
+      toast({ title: 'Network error. Please try again.', variant: 'destructive' });
     } finally {
       setCreating(false);
     }

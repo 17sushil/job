@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, KeyRound } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,7 +36,7 @@ export function OtpStep({
     event.preventDefault();
 
     if (otp.length !== 6) {
-      toast.error('OTP must be 6 digits');
+      toast({ title: 'OTP must be 6 digits', variant: 'destructive' });
       return;
     }
 
@@ -45,14 +45,14 @@ export function OtpStep({
       const res = await verifyOtpRequest(identifier, otp);
 
       if (!res.ok) {
-        toast.error(await readApiError(res));
+        toast({ title: await readApiError(res), variant: 'destructive' });
         return;
       }
 
       const body = await res.json();
       onVerified(body.data.user as AuthUser);
     } catch {
-      toast.error('Network error. Please try again.');
+      toast({ title: 'Network error. Please try again.', variant: 'destructive' });
     } finally {
       setSubmitting(false);
     }

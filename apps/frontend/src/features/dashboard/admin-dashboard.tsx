@@ -8,7 +8,7 @@ import {
   Trash2,
   UserRound,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -54,7 +54,7 @@ export function AdminDashboard({ user }: { user: AuthUser }) {
       setUsers(usersData.users);
       setJobs(jobsData.jobs);
     } catch (error) {
-      toast.error((error as Error).message);
+      toast({ title: (error as Error).message, variant: 'destructive' });
     }
   }, []);
 
@@ -69,10 +69,10 @@ export function AdminDashboard({ user }: { user: AuthUser }) {
         method: 'DELETE',
       });
       if (!res.ok) {
-        toast.error(await readApiError(res));
+        toast({ title: await readApiError(res), variant: 'destructive' });
         return;
       }
-      toast.success(`${target.name ?? target.identifier} deleted`);
+      toast({ title: `${target.name ?? target.identifier} deleted`, variant: 'success' });
       await load();
     } finally {
       setBusyId(null);
@@ -84,10 +84,10 @@ export function AdminDashboard({ user }: { user: AuthUser }) {
     try {
       const res = await fetch(`/api/jobs/${job.id}`, { method: 'DELETE' });
       if (!res.ok) {
-        toast.error(await readApiError(res));
+        toast({ title: await readApiError(res), variant: 'destructive' });
         return;
       }
-      toast.success(`"${job.title}" removed`);
+      toast({ title: `"${job.title}" removed`, variant: 'success' });
       await load();
     } finally {
       setBusyId(null);

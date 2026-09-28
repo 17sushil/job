@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { BadgeCheck, ImagePlus } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,11 +32,11 @@ export function RecruiterProfileForm({ user, onSaved }: RecruiterProfileFormProp
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      toast.error('Please choose an image file');
+      toast({ title: 'Please choose an image file', variant: 'destructive' });
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      toast.error('Image must be under 300 KB');
+      toast({ title: 'Image must be under 300 KB', variant: 'destructive' });
       return;
     }
 
@@ -50,15 +50,15 @@ export function RecruiterProfileForm({ user, onSaved }: RecruiterProfileFormProp
     event.preventDefault();
 
     if (companyName.trim().length < 2) {
-      toast.error('Company name is required');
+      toast({ title: 'Company name is required', variant: 'destructive' });
       return;
     }
     if (!/^[+]?[0-9\s()-]{7,15}$/.test(contactNumber.trim())) {
-      toast.error('Enter a valid contact number');
+      toast({ title: 'Enter a valid contact number', variant: 'destructive' });
       return;
     }
     if (!avatar) {
-      toast.error('Please upload a profile image');
+      toast({ title: 'Please upload a profile image', variant: 'destructive' });
       return;
     }
 
@@ -71,15 +71,15 @@ export function RecruiterProfileForm({ user, onSaved }: RecruiterProfileFormProp
       });
 
       if (!res.ok) {
-        toast.error(await readApiError(res));
+        toast({ title: await readApiError(res), variant: 'destructive' });
         return;
       }
 
       const body = await res.json();
-      toast.success('Profile saved');
+      toast({ title: 'Profile saved', variant: 'success' });
       onSaved(body.data.user as AuthUser);
     } catch {
-      toast.error('Network error. Please try again.');
+      toast({ title: 'Network error. Please try again.', variant: 'destructive' });
     } finally {
       setSaving(false);
     }

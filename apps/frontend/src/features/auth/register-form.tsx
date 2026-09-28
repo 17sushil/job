@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import toast from 'react-hot-toast';
+import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,15 +27,15 @@ export function RegisterForm({ role }: RegisterFormProps) {
     event.preventDefault();
 
     if (!identifier.trim()) {
-      toast.error('Enter your email or phone number');
+      toast({ title: 'Enter your email or phone number', variant: 'destructive' });
       return;
     }
     if (password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+      toast({ title: 'Password must be at least 6 characters', variant: 'destructive' });
       return;
     }
     if (password !== confirmPassword) {
-      toast.error('Passwords do not match');
+      toast({ title: 'Passwords do not match', variant: 'destructive' });
       return;
     }
 
@@ -48,14 +48,14 @@ export function RegisterForm({ role }: RegisterFormProps) {
       });
 
       if (!res.ok) {
-        toast.error(await readApiError(res));
+        toast({ title: await readApiError(res), variant: 'destructive' });
         return;
       }
 
-      toast.success('Account created. Now verify the OTP.');
+      toast({ title: 'Account created. Now verify the OTP.', variant: 'success' });
       setStep('otp');
     } catch {
-      toast.error('Network error. Please try again.');
+      toast({ title: 'Network error. Please try again.', variant: 'destructive' });
     } finally {
       setSubmitting(false);
     }
@@ -69,7 +69,7 @@ export function RegisterForm({ role }: RegisterFormProps) {
         backLabel="Back to details"
         onBack={() => setStep('details')}
         onVerified={() => {
-          toast.success('Verified. Welcome to JobDev!');
+          toast({ title: 'Verified. Welcome to JobDev!', variant: 'success' });
           router.push('/dashboard');
         }}
       />
