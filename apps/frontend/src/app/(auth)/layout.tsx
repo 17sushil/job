@@ -30,19 +30,19 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      <aside className="hidden flex-col justify-between bg-panel p-10 text-panel-foreground lg:flex">
+      <aside className="hidden flex-col justify-between gap-6 overflow-hidden bg-panel p-8 text-panel-foreground lg:flex lg:sticky lg:top-0 lg:h-screen xl:p-10">
         <Logo variant="light" size={44} />
 
-        <div className="max-w-md space-y-6">
-          <h2 className="animate-fade-in-up text-3xl font-bold leading-tight">
+        <div className="flex min-h-0 flex-col justify-center gap-5">
+          <h2 className="animate-fade-in-up text-2xl font-bold leading-tight xl:text-3xl">
             The simple way to connect candidates and recruiters.
           </h2>
           <img
             src="/jobdev-auth-poster.png"
             alt="JobDev - get hired faster"
-            className="w-full rounded-2xl border border-white/10 shadow-lg"
+            className="mx-auto hidden max-h-[42vh] w-auto max-w-full rounded-2xl border border-white/10 object-contain shadow-lg lg:block"
           />
-          <ul className="space-y-3">
+          <ul className="space-y-2.5">
             {HIGHLIGHTS.map(({ icon: Icon, title, text }) => (
               <li
                 key={title}
