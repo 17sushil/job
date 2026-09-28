@@ -13,6 +13,7 @@ import {
   readApiError,
   verifyOtpRequest,
 } from '@/features/auth/api';
+import { PasswordInput } from '@/features/auth/password-input';
 
 export function LoginForm() {
   const router = useRouter();
@@ -136,9 +137,8 @@ export function LoginForm() {
 
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
-        <Input
+        <PasswordInput
           id="password"
-          type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           placeholder="Your password"

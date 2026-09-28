@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { readApiError, type AuthUser } from '@/features/auth/api';
+import { PasswordInput } from '@/features/auth/password-input';
 import { AdminDashboard } from '@/features/dashboard/admin-dashboard';
 
 export function SuperAdminDashboard({ user }: { user: AuthUser }) {
@@ -90,9 +91,8 @@ export function SuperAdminDashboard({ user }: { user: AuthUser }) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="admin-password">Password</Label>
-              <Input
+              <PasswordInput
                 id="admin-password"
-                type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="At least 6 characters"

@@ -17,5 +17,8 @@ export const AppDataSource = new DataSource({
     min: env.DB_POOL_MIN,
     max: env.DB_POOL_MAX,
     idleTimeoutMillis: env.DB_POOL_IDLE_TIMEOUT_MS,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
+    connectionTimeoutMillis: 15_000,
   },
 });
