@@ -51,6 +51,12 @@ export default function DashboardLayout({
 
   useEffect(() => {
     const handleUnauthorized = () => {
+      const state = useAuthStore.getState();
+      // A fresh session handoff (just after OTP) may race this event; the
+      // verifySession fallback already trusts it, so never bounce in that case.
+      if (state.user && state.token) {
+        return;
+      }
       clearUser();
       toast({
         title: 'Session ended. Please log in again.',

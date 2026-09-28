@@ -39,18 +39,26 @@ export const authMiddleware: RequestHandler = async (req, _res, next) => {
       : null;
     const token = bearerToken ?? parseCookies(req.headers.cookie)[COOKIE_NAME];
     if (!token) {
+      console.log(
+        `[AUTH-DEBUG] no credentials on ${req.method} ${req.originalUrl} (auth header: ${authHeader ? 'present' : 'none'}, cookie: ${req.headers.cookie ? 'present' : 'none'})`,
+      );
       throw new AppError(401, 'Not authenticated');
     }
 
     let payload: { sub: string };
     try {
       payload = jwt.verify(token, env.JWT_SECRET) as { sub: string };
-    } catch {
+    } catch (verifyError) {
+      console.log(
+        `[AUTH-DEBUG] jwt verify failed (${bearerToken ? 'bearer' : 'cookie'}):`,
+        verifyError instanceof Error ? verifyError.message : verifyError,
+      );
       throw new AppError(401, 'Session expired. Please log in again.');
     }
 
     const user = await userRepo.findById(payload.sub);
     if (!user || user.isDeleted) {
+      console.log(`[AUTH-DEBUG] no user for sub=${payload.sub}`);
       throw new AppError(401, 'Not authenticated');
     }
 
