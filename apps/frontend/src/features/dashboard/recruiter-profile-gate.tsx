@@ -1,6 +1,7 @@
 'use client';
 
-import { Building2 } from 'lucide-react';
+import { useState } from 'react';
+import { Building2, X } from 'lucide-react';
 
 import { recruiterProfileIncomplete } from '@/features/auth/api';
 import { RecruiterProfileForm } from '@/features/dashboard/recruiter-profile-form';
@@ -14,15 +15,25 @@ import { useAuthStore } from '@/store/auth';
 export function RecruiterProfileGate() {
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
+  const [dismissed, setDismissed] = useState(false);
 
-  if (!user || !recruiterProfileIncomplete(user)) {
+  if (!user || dismissed || !recruiterProfileIncomplete(user)) {
     return null;
   }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/50 p-4 backdrop-blur-md">
-      <div className="animate-pop-in w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl">
-        <div className="mb-4 flex items-center gap-3">
+      <div className="animate-pop-in relative w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl">
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          title="for testing only"
+          className="absolute right-3 top-3 flex items-center gap-1 rounded-lg border border-border bg-background/60 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+          for testing only
+        </button>
+        <div className="mb-4 flex items-center gap-3 pr-24">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light">
             <Building2 className="h-5 w-5 text-primary" />
           </span>

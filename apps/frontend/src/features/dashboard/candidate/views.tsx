@@ -1693,9 +1693,10 @@ export function InsightsView({
   avgReplyDays: number;
   avgMatch: number;
 }) {
-  const views = useCountUp(163);
-  const applications = useCountUp(16);
-  const interviews = useCountUp(4);
+  const totalApplications = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  const views = useCountUp(0);
+  const applications = useCountUp(totalApplications);
+  const interviews = useCountUp((counts.Interview ?? 0) + (counts.Offer ?? 0));
 
   const buckets = [
     { label: '80–100', value: 4, tone: 'hsl(var(--primary))' },
@@ -1852,6 +1853,9 @@ export function ProfileView({
   atsFileName = null,
   onOpenResume,
   onDownloadAts,
+  onSaveProfile,
+  onAddSkill,
+  onAddExperience,
 }: {
   profile: CandidateProfile;
   checklist: ChecklistItem[];
@@ -1863,9 +1867,21 @@ export function ProfileView({
   atsFileName?: string | null;
   onOpenResume?: () => void;
   onDownloadAts?: () => void;
+  onSaveProfile?: (fields: {
+    headline: string;
+    about: string;
+    location: string;
+    phone: string;
+    expectedSalary: string;
+    noticePeriod: string;
+  }) => void;
+  onAddSkill?: (skill: string) => void;
+  onAddExperience?: (entry: { role: string; company: string; period: string }) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [skillDraft, setSkillDraft] = useState('');
+  const [expDraft, setExpDraft] = useState({ role: '', company: '', period: '' });
   const [form, setForm] = useState({
     headline: profile.headline,
     about: profile.about,
@@ -1884,7 +1900,25 @@ export function ProfileView({
     event.preventDefault();
     setEditing(false);
     setSaved(true);
+    onSaveProfile?.(form);
     window.setTimeout(() => setSaved(false), 2600);
+  }
+
+  function addSkill() {
+    const skill = skillDraft.trim();
+    if (!skill) return;
+    onAddSkill?.(skill);
+    setSkillDraft('');
+  }
+
+  function addExperience() {
+    if (!expDraft.role.trim() || !expDraft.company.trim()) return;
+    onAddExperience?.({
+      role: expDraft.role.trim(),
+      company: expDraft.company.trim(),
+      period: expDraft.period.trim() || '—',
+    });
+    setExpDraft({ role: '', company: '', period: '' });
   }
 
   return (
@@ -2025,12 +2059,16 @@ export function ProfileView({
                 <p className="flex items-center gap-2 text-muted-foreground">
                   <Phone className="h-4 w-4 text-primary" /> {profile.phone}
                 </p>
-                <p className="flex items-center gap-2 text-muted-foreground">
-                  <Target className="h-4 w-4 text-primary" /> Wants {profile.expectedSalary}
-                </p>
-                <p className="flex items-center gap-2 text-muted-foreground">
-                  <Clock className="h-4 w-4 text-primary" /> {profile.noticePeriod} notice
-                </p>
+                {profile.expectedSalary ? (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <Target className="h-4 w-4 text-primary" /> Wants {profile.expectedSalary}
+                  </p>
+                ) : null}
+                {profile.noticePeriod ? (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <Clock className="h-4 w-4 text-primary" /> {profile.noticePeriod} notice
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </SectionCard>
@@ -2045,15 +2083,67 @@ export function ProfileView({
                   {skill}
                 </span>
               ))}
-              {missing.some((item) => item.key === 'references') ? (
-                <span className="rounded-full border border-dashed border-border px-3 py-1 text-xs font-semibold text-muted-foreground">
-                  + add a skill
-                </span>
-              ) : null}
+              <span className="flex items-center gap-1">
+                <Input
+                  value={skillDraft}
+                  onChange={(event) => setSkillDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      addSkill();
+                    }
+                  }}
+                  placeholder="+ add a skill"
+                  className="h-7 w-32 rounded-full border-dashed px-3 text-xs"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full px-2.5 text-xs"
+                  onClick={addSkill}
+                  disabled={!skillDraft.trim()}
+                >
+                  Add
+                </Button>
+              </span>
             </div>
           </SectionCard>
 
           <SectionCard title="Experience" subtitle="What recruiters read first" delay={180}>
+            {profile.experience.length === 0 ? (
+              <div className="mb-4 grid gap-2 sm:grid-cols-3">
+                <Input
+                  value={expDraft.role}
+                  onChange={(event) => setExpDraft({ ...expDraft, role: event.target.value })}
+                  placeholder="Role"
+                  className="h-8 text-xs"
+                />
+                <Input
+                  value={expDraft.company}
+                  onChange={(event) => setExpDraft({ ...expDraft, company: event.target.value })}
+                  placeholder="Company"
+                  className="h-8 text-xs"
+                />
+                <span className="flex gap-2">
+                  <Input
+                    value={expDraft.period}
+                    onChange={(event) => setExpDraft({ ...expDraft, period: event.target.value })}
+                    placeholder="Period (e.g. 2024 - now)"
+                    className="h-8 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 shrink-0"
+                    onClick={addExperience}
+                    disabled={!expDraft.role.trim() || !expDraft.company.trim()}
+                  >
+                    Add
+                  </Button>
+                </span>
+              </div>
+            ) : null}
             <ol className="space-y-5">
               {profile.experience.map((role) => (
                 <li key={`${role.company}-${role.role}`} className="border-l-2 border-primary/30 pl-4">

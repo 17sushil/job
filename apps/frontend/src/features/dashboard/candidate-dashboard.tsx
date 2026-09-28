@@ -16,6 +16,7 @@ import {
   Sparkles,
   UploadCloud,
   Video,
+  X,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -243,21 +244,53 @@ export function CandidateDashboard() {
   const [applications, setApplications] = useState<Application[]>(INITIAL_APPLICATIONS);
   const [savedIds, setSavedIds] = useState<string[]>(INITIAL_SAVED_IDS);
   const [conversations, setConversations] = useState<Conversation[]>(INITIAL_CONVERSATIONS);
-  const [checklist, setChecklist] = useState<ChecklistItem[]>(PROFILE_CHECKLIST);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(() =>
+    PROFILE_CHECKLIST.map((item) => ({ ...item, done: false })),
+  );
   const [toast, setToast] = useState<string | null>(null);
 
-  /* Profile mirrors the real logged-in account; no dummy persona. */
-  const profile = useMemo<CandidateProfile>(
-    () => ({
-      ...INITIAL_PROFILE,
-      name: user?.name ?? '',
-      headline: INITIAL_PROFILE.headline,
-      email: user?.email ?? '',
-      phone: user?.phone ?? '',
-      resumeFileName: user?.resumeFileName ?? '',
-    }),
-    [user],
-  );
+  /* Profile mirrors the real logged-in account; editable during the session. */
+  const [profile, setProfile] = useState<CandidateProfile>(() => ({
+    ...INITIAL_PROFILE,
+    name: user?.name ?? '',
+    headline: '',
+    email: user?.email ?? '',
+    phone: user?.phone ?? '',
+    resumeFileName: user?.resumeFileName ?? '',
+  }));
+
+  useEffect(() => {
+    setProfile((current) => ({
+      ...current,
+      name: user?.name ?? current.name,
+      email: user?.email ?? current.email,
+      phone: user?.phone ?? current.phone,
+      resumeFileName: user?.resumeFileName ?? current.resumeFileName,
+    }));
+  }, [user]);
+
+  /* Data-driven checklist signals track the real profile; references/video
+     stay manual because only the candidate knows about them. */
+  useEffect(() => {
+    setChecklist((current) =>
+      current.map((item) => {
+        switch (item.key) {
+          case 'links':
+            return { ...item, done: profile.links.length > 0 };
+          case 'education':
+            return { ...item, done: profile.education.length > 0 };
+          case 'salary':
+            return { ...item, done: Boolean(profile.expectedSalary) };
+          case 'phone':
+            return { ...item, done: Boolean(profile.phone) };
+          case 'workModes':
+            return { ...item, done: profile.workModes.length > 0 };
+          default:
+            return item;
+        }
+      }),
+    );
+  }, [profile]);
 
   /* Live data: jobs and applications come from the API, not mock data. */
   const loadLiveData = useCallback(async () => {
@@ -316,6 +349,45 @@ export function CandidateDashboard() {
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
   const [query, setQuery] = useState('');
+  const [keywordFilters, setKeywordFilters] = useState<string[]>([]);
+  const [jobSearch, setJobSearch] = useState('');
+
+  /* Keyword boxes are derived from the live job list; picking one adds it to
+     the search box and narrows the job grid like a filter. */
+  const keywordOptions = useMemo(() => {
+    const tokens = new Map<string, number>();
+    for (const job of jobs) {
+      const candidates = [
+        job.company,
+        job.location,
+        job.type,
+        job.workMode,
+        ...job.title.split(/\s+/),
+      ];
+      for (const raw of candidates) {
+        const clean = raw.trim();
+        if (clean.length < 3) continue;
+        tokens.set(clean, (tokens.get(clean) ?? 0) + 1);
+      }
+    }
+    return [...tokens.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([token]) => token);
+  }, [jobs]);
+
+  const filteredJobs = useMemo(() => {
+    const text = jobSearch.trim().toLowerCase();
+    return jobs.filter((job) => {
+      const haystack =
+        `${job.title} ${job.company} ${job.location} ${job.type} ${job.workMode} ${job.description}`.toLowerCase();
+      const keywordMatch = keywordFilters.every((keyword) =>
+        haystack.includes(keyword.toLowerCase()),
+      );
+      const textMatch = !text || haystack.includes(text);
+      return keywordMatch && textMatch;
+    });
+  }, [jobs, keywordFilters, jobSearch]);
   const searchRef = useRef<HTMLDivElement>(null);
 
   /* Close the search dropdown on outside click / Escape so an open result list
@@ -404,7 +476,7 @@ export function CandidateDashboard() {
     },
     {
       label: 'Profile views',
-      value: 163,
+      value: 0,
       delta: `Profile ${completeness}% complete`,
       icon: Eye,
       hint: 'Open your insights',
@@ -727,6 +799,14 @@ export function CandidateDashboard() {
 
         {view === 'overview' && (
           <>
+            <div className="animate-fade-in-up overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+              <img
+                src="/jobdev-poster.png"
+                alt="JobDev - find work that fits, apply in one click"
+                className="h-auto w-full object-cover"
+              />
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {stats.map((stat, index) => (
                 <StatCard
@@ -1014,14 +1094,55 @@ export function CandidateDashboard() {
         )}
 
         {view === 'jobs' && (
-          <JobsView
-            jobs={jobs}
-            savedIds={savedIds}
-            appliedJobIds={appliedJobIds}
-            onOpenJob={setSelectedJob}
-            onToggleSave={toggleSave}
-            onApply={applyToJob}
-          />
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border bg-card p-3">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-input bg-background px-2 py-1.5">
+                {keywordFilters.map((keyword) => (
+                  <button
+                    key={keyword}
+                    type="button"
+                    onClick={() =>
+                      setKeywordFilters((current) =>
+                        current.filter((item) => item !== keyword),
+                      )
+                    }
+                    className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground transition-transform active:scale-95"
+                  >
+                    {keyword}
+                    <X className="h-3 w-3" />
+                  </button>
+                ))}
+                <input
+                  value={jobSearch}
+                  onChange={(event) => setJobSearch(event.target.value)}
+                  placeholder="Search jobs by keyword…"
+                  className="h-7 min-w-[140px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {keywordOptions
+                  .filter((keyword) => !keywordFilters.includes(keyword))
+                  .map((keyword) => (
+                    <button
+                      key={keyword}
+                      type="button"
+                      onClick={() => setKeywordFilters((current) => [...current, keyword])}
+                      className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary-dark"
+                    >
+                      + {keyword}
+                    </button>
+                  ))}
+              </div>
+            </div>
+            <JobsView
+              jobs={filteredJobs}
+              savedIds={savedIds}
+              appliedJobIds={appliedJobIds}
+              onOpenJob={setSelectedJob}
+              onToggleSave={toggleSave}
+              onApply={applyToJob}
+            />
+          </div>
         )}
 
         {view === 'messages' && (
@@ -1032,8 +1153,8 @@ export function CandidateDashboard() {
           <InsightsView
             counts={counts}
             profilePercent={completeness}
-            responseRate={80}
-            avgReplyDays={2}
+            responseRate={0}
+            avgReplyDays={0}
             avgMatch={avgMatch}
           />
         )}
@@ -1049,6 +1170,23 @@ export function CandidateDashboard() {
             atsFileName={atsResult?.fileName ?? null}
             onOpenResume={() => setView('resume')}
             onDownloadAts={downloadAtsResume}
+            onSaveProfile={(fields) => setProfile((current) => ({ ...current, ...fields }))}
+            onAddSkill={(skill) =>
+              setProfile((current) =>
+                current.skills.includes(skill)
+                  ? current
+                  : { ...current, skills: [...current.skills, skill] },
+              )
+            }
+            onAddExperience={(entry) =>
+              setProfile((current) => ({
+                ...current,
+                experience: [
+                  ...current.experience,
+                  { ...entry, highlights: [] },
+                ],
+              }))
+            }
           />
         )}
 
