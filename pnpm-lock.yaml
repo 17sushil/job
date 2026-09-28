@@ -41,12 +41,6 @@ importers:
       pg:
         specifier: ^8.23.0
         version: 8.23.0
-      rate-limit-redis:
-        specifier: ^6.0.1
-        version: 6.0.1(express-rate-limit@8.7.0(express@4.22.2))
-      redis:
-        specifier: ^6.2.1
-        version: 6.2.1
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -129,6 +123,9 @@ importers:
       react-hook-form:
         specifier: ^7.88.0
         version: 7.88.0(react@19.2.8)
+      react-hot-toast:
+        specifier: ^2.6.1
+        version: 2.6.1(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.7.0
@@ -1830,6 +1827,11 @@ packages:
     resolution: {integrity: sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==}
     engines: {node: '>=18'}
 
+  goober@2.1.19:
+    resolution: {integrity: sha512-U7veizMqxyKlM58+Z5j2ngJBH/r9siDmxpvNxSw0PylF6WQvrASJEZrxh1hidRBJc2jqoBVSyOban5u8m+6Rxg==}
+    peerDependencies:
+      csstype: ^3.0.10
+
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
     engines: {node: '>= 0.4'}
@@ -2297,12 +2299,6 @@ packages:
     resolution: {integrity: sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg==}
     engines: {node: '>= 0.6'}
 
-  rate-limit-redis@6.0.1:
-    resolution: {integrity: sha512-qys7ulbh5X4Bohfjm6BXFWBiyzK6r5eGdFghPWZfJwggnDFTDwCIRq1u7tmN50vLTp4Kbe1h/ZAuBOn/hVpjtQ==}
-    engines: {node: '>= 16'}
-    peerDependencies:
-      express-rate-limit: '>= 8.6.0'
-
   raw-body@2.5.3:
     resolution: {integrity: sha512-s4VSOf6yN0rvbRZGxs8Om5CWj6seneMwK3oDb4lWDH0UPhWcxwOWw5+qk24bxq87szX1ydrwylIOp2uG1ojUpA==}
     engines: {node: '>= 0.8'}
@@ -2317,6 +2313,20 @@ packages:
     engines: {node: '>=18.0.0'}
     peerDependencies:
       react: ^16.8.0 || ^17 || ^18 || ^19
+
+  react-hot-toast@2.6.1:
+    resolution: {integrity: sha512-gjFsf05dxcku0FkyMtFH+XmYFdA2odXfBVknEr/IZ+XpUjwsgvtY2616sOpUynK+l9ykQDRNpaJ1hYfuximUiA==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      '@types/react': '*'
+      '@types/react-dom': '*'
+      react: '>=16'
+      react-dom: '>=16'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
 
   react@19.2.8:
     resolution: {integrity: sha512-PWaYA1L/q9u2u7xYQi+Y3L3Yfnie7XyLeaJICV1MGD6LprsBxcAqGjYyr0eY3p+QdsA+x/Irkt4Qif8D63+Sbw==}
@@ -3300,22 +3310,27 @@ snapshots:
   '@redis/bloom@6.2.1(@redis/client@6.2.1)':
     dependencies:
       '@redis/client': 6.2.1
+    optional: true
 
   '@redis/client@6.2.1':
     dependencies:
       cluster-key-slot: 1.1.2
+    optional: true
 
   '@redis/json@6.2.1(@redis/client@6.2.1)':
     dependencies:
       '@redis/client': 6.2.1
+    optional: true
 
   '@redis/search@6.2.1(@redis/client@6.2.1)':
     dependencies:
       '@redis/client': 6.2.1
+    optional: true
 
   '@redis/time-series@6.2.1(@redis/client@6.2.1)':
     dependencies:
       '@redis/client': 6.2.1
+    optional: true
 
   '@rollup/rollup-android-arm-eabi@4.63.1':
     optional: true
@@ -3803,7 +3818,8 @@ snapshots:
 
   clsx@2.1.1: {}
 
-  cluster-key-slot@1.1.2: {}
+  cluster-key-slot@1.1.2:
+    optional: true
 
   color-convert@2.0.1:
     dependencies:
@@ -4182,6 +4198,10 @@ snapshots:
       is-glob: 4.0.3
 
   globals@14.0.0: {}
+
+  goober@2.1.19(csstype@3.2.3):
+    dependencies:
+      csstype: 3.2.3
 
   gopd@1.2.0: {}
 
@@ -4569,10 +4589,6 @@ snapshots:
 
   range-parser@1.2.1: {}
 
-  rate-limit-redis@6.0.1(express-rate-limit@8.7.0(express@4.22.2)):
-    dependencies:
-      express-rate-limit: 8.7.0(express@4.22.2)
-
   raw-body@2.5.3:
     dependencies:
       bytes: 3.1.2
@@ -4588,6 +4604,16 @@ snapshots:
   react-hook-form@7.88.0(react@19.2.8):
     dependencies:
       react: 19.2.8
+
+  react-hot-toast@2.6.1(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+    dependencies:
+      csstype: 3.2.3
+      goober: 2.1.19(csstype@3.2.3)
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
+    optionalDependencies:
+      '@types/react': 19.2.18
+      '@types/react-dom': 19.2.7(@types/react@19.2.18)
 
   react@19.2.8: {}
 
@@ -4607,6 +4633,7 @@ snapshots:
     transitivePeerDependencies:
       - '@node-rs/xxhash'
       - '@opentelemetry/api'
+    optional: true
 
   reflect-metadata@0.2.2: {}
 
