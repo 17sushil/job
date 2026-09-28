@@ -352,10 +352,26 @@ export function CandidateDashboard() {
   const [keywordFilters, setKeywordFilters] = useState<string[]>([]);
   const [jobSearch, setJobSearch] = useState('');
 
-  /* Keyword boxes are derived from the live job list; picking one adds it to
-     the search box and narrows the job grid like a filter. */
+  /* Keyword boxes: curated job-market keywords plus anything derived from the
+     live job list; picking one adds it to the search box and filters the grid. */
   const keywordOptions = useMemo(() => {
-    const tokens = new Map<string, number>();
+    const DEFAULT_KEYWORDS = [
+      'Remote',
+      'Hybrid',
+      'On-site',
+      'Full-time',
+      'Part-time',
+      'Internship',
+      'Frontend',
+      'Backend',
+      'Full-stack',
+      'React',
+      'Node.js',
+      'TypeScript',
+      'Engineer',
+      'Designer',
+    ];
+    const derived = new Map<string, number>();
     for (const job of jobs) {
       const candidates = [
         job.company,
@@ -367,13 +383,13 @@ export function CandidateDashboard() {
       for (const raw of candidates) {
         const clean = raw.trim();
         if (clean.length < 3) continue;
-        tokens.set(clean, (tokens.get(clean) ?? 0) + 1);
+        derived.set(clean, (derived.get(clean) ?? 0) + 1);
       }
     }
-    return [...tokens.entries()]
+    const derivedSorted = [...derived.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
       .map(([token]) => token);
+    return [...new Set([...derivedSorted, ...DEFAULT_KEYWORDS])].slice(0, 14);
   }, [jobs]);
 
   const filteredJobs = useMemo(() => {
