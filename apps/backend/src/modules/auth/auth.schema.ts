@@ -39,3 +39,10 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+
+export const uploadResumeSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  dataBase64: z.string().min(1).max(2_800_000, 'Resume file is too large (max 2 MB)'),
+});
+
+export type UploadResumeInput = z.infer<typeof uploadResumeSchema>;

@@ -12,6 +12,7 @@ export interface AuthUser {
   companyName: string | null;
   contactNumber: string | null;
   avatar: string | null;
+  resumeFileName: string | null;
   createdAt: string;
 }
 
@@ -82,6 +83,13 @@ export async function logoutRequest() {
   return apiClient('/api/auth/logout', { method: 'POST' });
 }
 
+export async function uploadResumeRequest(fileName: string, dataBase64: string) {
+  return apiClient('/api/auth/resume', {
+    method: 'POST',
+    ...jsonInit({ fileName, dataBase64 }),
+  });
+}
+
 export async function updateProfileRequest(payload: UpdateProfilePayload) {
   return apiClient('/api/auth/profile', {
     method: 'PATCH',
@@ -93,3 +101,6 @@ export const recruiterProfileIncomplete = (user: AuthUser | null) =>
   !!user &&
   user.role === 'recruiter' &&
   (!user.companyName || !user.contactNumber || !user.avatar);
+
+export const candidateProfileIncomplete = (user: AuthUser | null) =>
+  !!user && user.role === 'candidate' && !user.resumeFileName;

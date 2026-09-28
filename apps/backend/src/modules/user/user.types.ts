@@ -18,5 +18,8 @@ export type UpdateUserInput = Partial<{
   companyName: string | null;
   contactNumber: string | null;
   avatar: string | null;
+  resumeFileName: string | null;
+  resumeData: string | null;
+  resumeUploadedAt: Date | null;
   isDeleted: boolean;
 }>;

@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express';
+import { AppError } from '../../common/errors/AppError.js';
 import {
   AuthService,
   COOKIE_NAME,
@@ -49,6 +50,19 @@ export const verifyOtp: RequestHandler = async (req, res, next) => {
 
 export const getCurrentUser: RequestHandler = async (req, res) => {
   res.json({ success: true, data: { user: toSafeUser(req.user!) } });
+};
+
+export const uploadResume: RequestHandler = async (req, res, next) => {
+  try {
+    if (req.user!.role.toLowerCase() !== 'candidate') {
+      throw new AppError(403, 'Only candidates can upload a resume');
+    }
+    const { fileName, dataBase64 } = req.body;
+    const user = await authService.uploadResume(req.user!.userId, fileName, dataBase64);
+    res.json({ success: true, data: { user: toSafeUser(user) } });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const logoutUser: RequestHandler = async (_req, res) => {

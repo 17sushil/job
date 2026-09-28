@@ -42,6 +42,7 @@ export const toSafeUser = (user: User) => ({
   companyName: user.companyName,
   contactNumber: user.contactNumber,
   avatar: user.avatar,
+  resumeFileName: user.resumeFileName ?? null,
   createdAt: user.createdAt,
 });
 
@@ -156,5 +157,17 @@ export class AuthService {
       throw new AppError(404, 'User not found');
     }
     return this.userRepo.update(userId, { ...input });
+  }
+
+  async uploadResume(userId: string, fileName: string, dataBase64: string) {
+    const user = await this.userRepo.findById(userId);
+    if (!user || user.isDeleted) {
+      throw new AppError(404, 'User not found');
+    }
+    return this.userRepo.update(userId, {
+      resumeFileName: fileName,
+      resumeData: dataBase64,
+      resumeUploadedAt: new Date(),
+    });
   }
 }

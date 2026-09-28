@@ -52,6 +52,15 @@ export class User {
   @Column({ type: 'text', nullable: true })
   avatar!: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  resumeFileName!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  resumeData!: string | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  resumeUploadedAt!: Date | null;
+
   @Column({ type: 'boolean', default: false })
   isDeleted!: boolean;
 
