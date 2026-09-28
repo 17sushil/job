@@ -2,20 +2,33 @@ name: CI
 
 on:
   push:
+    branches: [stable, main]
   pull_request:
 
 jobs:
-  quality:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile=false
-      - run: pnpm lint
-      - run: pnpm build
+
+      - name: Install pnpm
+        run: npm install -g pnpm@9.15.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint backend
+        run: pnpm --filter @jobdev/backend lint
+
+      - name: Lint frontend
+        run: pnpm --filter @jobdev/frontend lint
+
+      - name: Build backend
+        run: pnpm --filter @jobdev/backend build
+
+      - name: Build frontend
+        run: pnpm --filter @jobdev/frontend build

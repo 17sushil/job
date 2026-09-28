@@ -68,7 +68,12 @@ export class AuthService {
   }
 
   private async issueOtp(user: User) {
-    const otp = env.NODE_ENV === 'production' ? randomDigits(6) : TESTING_OTP;
+    const otp =
+      env.STATIC_OTP.length > 0
+        ? env.STATIC_OTP
+        : env.NODE_ENV === 'production'
+          ? randomDigits(6)
+          : TESTING_OTP;
     const otpHash = await bcrypt.hash(otp, 10);
     const otpExpiry = new Date(Date.now() + OTP_TTL_MS);
     await this.userRepo.update(user.userId, { otpHash, otpExpiry });
