@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { readApiError, registerRequest } from '@/features/auth/api';
 import { OtpStep } from '@/features/auth/otp-step';
 import { PasswordInput } from '@/features/auth/password-input';
+import { useAuthStore } from '@/store/auth';
 
 interface RegisterFormProps {
   role: 'candidate' | 'recruiter';
@@ -17,6 +18,7 @@ interface RegisterFormProps {
 
 export function RegisterForm({ role }: RegisterFormProps) {
   const router = useRouter();
+  const setSession = useAuthStore((state) => state.setSession);
   const [step, setStep] = useState<'details' | 'otp'>('details');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -68,7 +70,8 @@ export function RegisterForm({ role }: RegisterFormProps) {
         notice="Account created for"
         backLabel="Back to details"
         onBack={() => setStep('details')}
-        onVerified={() => {
+        onVerified={(user, token) => {
+          setSession(user, token);
           toast({ title: 'Verified. Welcome to JobDev!', variant: 'success' });
           router.push('/dashboard');
         }}

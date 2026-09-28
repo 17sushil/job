@@ -12,7 +12,7 @@ import { readApiError, verifyOtpRequest, type AuthUser } from '@/features/auth/a
 interface OtpStepProps {
   identifier: string;
   notice: string;
-  onVerified: (user: AuthUser) => void;
+  onVerified: (user: AuthUser, token: string) => void;
   onBack: () => void;
   backLabel: string;
 }
@@ -50,7 +50,7 @@ export function OtpStep({
       }
 
       const body = await res.json();
-      onVerified(body.data.user as AuthUser);
+      onVerified(body.data.user as AuthUser, body.data.token as string);
     } catch {
       toast({ title: 'Network error. Please try again.', variant: 'destructive' });
     } finally {

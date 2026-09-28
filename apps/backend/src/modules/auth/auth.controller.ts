@@ -38,7 +38,10 @@ export const verifyOtp: RequestHandler = async (req, res, next) => {
     const user = await authService.verifyOtp(req.body);
     res
       .cookie(COOKIE_NAME, signSession(user), cookieOptions())
-      .json({ success: true, data: { user: toSafeUser(user) } });
+      .json({
+        success: true,
+        data: { user: toSafeUser(user), token: signSession(user) },
+      });
   } catch (error) {
     next(error);
   }

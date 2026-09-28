@@ -2,21 +2,23 @@
 
 import { useState } from 'react';
 import { ShieldPlus } from 'lucide-react';
-import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { readApiError, type AuthUser } from '@/features/auth/api';
+import { toast } from '@/components/ui/use-toast';
+import type { AuthUser } from '@/features/auth/api';
 import { PasswordInput } from '@/features/auth/password-input';
 import { AdminDashboard } from '@/features/dashboard/admin-dashboard';
+import { apiPost } from '@/features/dashboard/shared';
 
 export function SuperAdminDashboard({ user }: { user: AuthUser }) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [creating, setCreating] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const handleCreate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -26,34 +28,28 @@ export function SuperAdminDashboard({ user }: { user: AuthUser }) {
       return;
     }
     if (password.length < 6) {
-      toast({ title: 'Password must be at least 6 characters', variant: 'destructive' });
+      toast({
+        title: 'Password must be at least 6 characters',
+        variant: 'destructive',
+      });
       return;
     }
 
     setCreating(true);
     try {
-      const res = await fetch('/api/admin/admins', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-          name: name.trim() || undefined,
-        }),
+      await apiPost('/api/admin/admins', {
+        email: email.trim(),
+        password,
+        name: name.trim() || undefined,
       });
-
-      if (!res.ok) {
-        toast({ title: await readApiError(res), variant: 'destructive' });
-        return;
-      }
 
       toast({ title: 'Admin account created', variant: 'success' });
       setEmail('');
       setName('');
       setPassword('');
-      window.location.reload();
-    } catch {
-      toast({ title: 'Network error. Please try again.', variant: 'destructive' });
+      setRefreshKey((key) => key + 1);
+    } catch (error) {
+      toast({ title: (error as Error).message, variant: 'destructive' });
     } finally {
       setCreating(false);
     }
@@ -61,7 +57,7 @@ export function SuperAdminDashboard({ user }: { user: AuthUser }) {
 
   return (
     <div className="space-y-8">
-      <AdminDashboard user={user} />
+      <AdminDashboard key={refreshKey} user={user} />
 
       <Card>
         <CardHeader className="pb-3">

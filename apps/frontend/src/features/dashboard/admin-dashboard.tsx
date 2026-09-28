@@ -12,8 +12,9 @@ import { toast } from '@/components/ui/use-toast';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { readApiError, type AuthUser } from '@/features/auth/api';
+import type { AuthUser } from '@/features/auth/api';
 import {
+  apiDelete,
   apiGet,
   EmptyState,
   formatDate,
@@ -65,15 +66,14 @@ export function AdminDashboard({ user }: { user: AuthUser }) {
   const handleDeleteUser = async (target: UserRow) => {
     setBusyId(target.id);
     try {
-      const res = await fetch(`/api/admin/users/${target.id}`, {
-        method: 'DELETE',
+      await apiDelete(`/api/admin/users/${target.id}`);
+      toast({
+        title: `${target.name ?? target.identifier} deleted`,
+        variant: 'success',
       });
-      if (!res.ok) {
-        toast({ title: await readApiError(res), variant: 'destructive' });
-        return;
-      }
-      toast({ title: `${target.name ?? target.identifier} deleted`, variant: 'success' });
       await load();
+    } catch (error) {
+      toast({ title: (error as Error).message, variant: 'destructive' });
     } finally {
       setBusyId(null);
     }
@@ -82,13 +82,11 @@ export function AdminDashboard({ user }: { user: AuthUser }) {
   const handleDeleteJob = async (job: JobRow) => {
     setBusyId(job.id);
     try {
-      const res = await fetch(`/api/jobs/${job.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        toast({ title: await readApiError(res), variant: 'destructive' });
-        return;
-      }
+      await apiDelete(`/api/jobs/${job.id}`);
       toast({ title: `"${job.title}" removed`, variant: 'success' });
       await load();
+    } catch (error) {
+      toast({ title: (error as Error).message, variant: 'destructive' });
     } finally {
       setBusyId(null);
     }

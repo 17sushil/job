@@ -10,7 +10,8 @@
     "migration:revert": "tsx node_modules/typeorm/cli.js -d src/database/data-source.ts migration:revert",
     "lint": "eslint src",
     "test": "vitest run",
-    "bootstrap:superadmin": "tsx scripts/bootstrap-superadmin.ts"
+    "bootstrap:superadmin": "tsx scripts/bootstrap-superadmin.ts",
+    "seed:test-accounts": "tsx scripts/seed-test-accounts.ts"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

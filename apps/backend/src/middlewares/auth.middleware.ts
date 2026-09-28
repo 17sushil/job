@@ -33,7 +33,11 @@ const userRepo = new UserRepository();
 
 export const authMiddleware: RequestHandler = async (req, _res, next) => {
   try {
-    const token = parseCookies(req.headers.cookie)[COOKIE_NAME];
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : null;
+    const token = bearerToken ?? parseCookies(req.headers.cookie)[COOKIE_NAME];
     if (!token) {
       throw new AppError(401, 'Not authenticated');
     }

@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { readApiError } from '@/features/auth/api';
+import { apiClient } from '@/lib/api-client';
 
 export function StatCard({
   icon: Icon,
@@ -42,7 +43,29 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+  const res = await apiClient(path);
+  if (!res.ok) {
+    throw new Error(await readApiError(res));
+  }
+  const body = await res.json();
+  return body.data as T;
+}
+
+export async function apiDelete<T>(path: string): Promise<T> {
+  const res = await apiClient(path, { method: 'DELETE' });
+  if (!res.ok) {
+    throw new Error(await readApiError(res));
+  }
+  const body = await res.json();
+  return body.data as T;
+}
+
+export async function apiPost<T>(path: string, payload: unknown): Promise<T> {
+  const res = await apiClient(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
   if (!res.ok) {
     throw new Error(await readApiError(res));
   }
