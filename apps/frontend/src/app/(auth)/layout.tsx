@@ -11,11 +11,11 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      <aside className="relative hidden overflow-hidden bg-panel lg:sticky lg:top-0 lg:block lg:h-screen">
+      <aside className="relative hidden overflow-hidden bg-[#3B3230] lg:sticky lg:top-0 lg:block lg:h-screen">
         <img
           src="/jobdev-auth-poster.png"
           alt="JobDev - get hired faster"
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-contain"
         />
       </aside>
 
