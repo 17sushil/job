@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { FileUp, UploadCloud } from 'lucide-react';
+import { FileUp, UploadCloud, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,9 +31,10 @@ export function CandidateProfileGate() {
   const [name, setName] = useState(user?.name ?? '');
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  if (!user || !candidateProfileIncomplete(user)) {
+  if (!user || dismissed || !candidateProfileIncomplete(user)) {
     return null;
   }
 
@@ -92,8 +93,17 @@ export function CandidateProfileGate() {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/50 p-4 backdrop-blur-md">
-      <div className="animate-pop-in w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl">
-        <div className="mb-4 flex items-center gap-3">
+      <div className="animate-pop-in relative w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl">
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          title="for testing only"
+          className="absolute right-3 top-3 flex items-center gap-1 rounded-lg border border-border bg-background/60 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+          for testing only
+        </button>
+        <div className="mb-4 flex items-center gap-3 pr-24">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light">
             <UploadCloud className="h-5 w-5 text-primary" />
           </span>
