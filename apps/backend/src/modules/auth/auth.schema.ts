@@ -40,6 +40,13 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Enter your current password'),
+  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+});
+
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
 export const uploadResumeSchema = z.object({
   fileName: z.string().min(1).max(255),
   dataBase64: z.string().min(1).max(2_800_000, 'Resume file is too large (max 2 MB)'),

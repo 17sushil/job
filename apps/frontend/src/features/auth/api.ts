@@ -95,6 +95,16 @@ export async function uploadResumeRequest(
   });
 }
 
+export async function changePasswordRequest(
+  currentPassword: string,
+  newPassword: string,
+) {
+  return apiClient('/api/auth/change-password', {
+    method: 'POST',
+    ...jsonInit({ currentPassword, newPassword }),
+  });
+}
+
 export async function updateProfileRequest(payload: UpdateProfilePayload) {
   return apiClient('/api/auth/profile', {
     method: 'PATCH',

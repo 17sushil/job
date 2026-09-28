@@ -37,6 +37,11 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           <h2 className="animate-fade-in-up text-3xl font-bold leading-tight">
             The simple way to connect candidates and recruiters.
           </h2>
+          <img
+            src="/jobdev-auth-poster.png"
+            alt="JobDev - get hired faster"
+            className="w-full rounded-2xl border border-white/10 shadow-lg"
+          />
           <ul className="space-y-3">
             {HIGHLIGHTS.map(({ icon: Icon, title, text }) => (
               <li

@@ -39,8 +39,12 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from '@/components/ui/use-toast';
+import { changePasswordRequest, readApiError } from '@/features/auth/api';
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/auth';
 
 import {
   ACTIVITY_STATUS,
@@ -1810,32 +1814,7 @@ export function InsightsView({
         </SectionCard>
       </div>
 
-      <SectionCard title="What to do next" delay={480}>
-        <ul className="space-y-2.5 text-sm">
-          <li className="flex gap-2">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
-            <span>
-              <strong className="font-semibold">Docker</strong> appears in 6 of
-              your matched roles and you have not listed it - a weekend project
-              would close that gap.
-            </span>
-          </li>
-          <li className="flex gap-2">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-            <span>
-              You reply to 80% of recruiter messages within a day. Fast replies
-              correlate with more offers - keep it up.
-            </span>
-          </li>
-          <li className="flex gap-2">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
-            <span>
-              Your offer from <strong className="font-semibold">Sajha Health</strong>{' '}
-              expires in 5 days. Decide before the deadline - recruiters rarely extend it.
-            </span>
-          </li>
-        </ul>
-      </SectionCard>
+      
     </div>
   );
 }
@@ -2360,7 +2339,8 @@ export function ProfileView({
 /*                                 Settings                                   */
 /* -------------------------------------------------------------------------- */
 
-export function SettingsView() {
+export function SettingsView({ profile }: { profile?: CandidateProfile }) {
+  const user = useAuthStore((state) => state.user);
   const [prefs, setPrefs] = useState({
     alerts: true,
     weekly: true,
@@ -2368,6 +2348,30 @@ export function SettingsView() {
     visible: true,
     hideSalary: false,
   });
+  const [pwOpen, setPwOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [changingPw, setChangingPw] = useState(false);
+
+  async function handleChangePassword(event: React.FormEvent) {
+    event.preventDefault();
+    setChangingPw(true);
+    try {
+      const res = await changePasswordRequest(currentPassword, newPassword);
+      if (!res.ok) {
+        toast({ title: await readApiError(res), variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Password changed', variant: 'success' });
+      setCurrentPassword('');
+      setNewPassword('');
+      setPwOpen(false);
+    } catch {
+      toast({ title: 'Network error. Please try again.', variant: 'destructive' });
+    } finally {
+      setChangingPw(false);
+    }
+  }
 
   const rows: Array<{
     key: keyof typeof prefs;
@@ -2445,51 +2449,80 @@ export function SettingsView() {
         <SectionCard title="Job preferences" delay={140}>
           <dl className="space-y-3 text-sm">
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Roles</dt>
-              <dd className="font-semibold">Frontend · Full-stack</dd>
+              <dt className="text-muted-foreground">Headline</dt>
+              <dd className="font-semibold">{profile?.headline || '—'}</dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">Working style</dt>
-              <dd className="font-semibold">Remote · Hybrid</dd>
+              <dd className="font-semibold">
+                {profile?.workModes.length ? profile.workModes.join(' · ') : '—'}
+              </dd>
             </div>
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Locations</dt>
-              <dd className="font-semibold">Kathmandu · Remote (Asia)</dd>
+              <dt className="text-muted-foreground">Location</dt>
+              <dd className="font-semibold">{profile?.location || '—'}</dd>
             </div>
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Minimum salary</dt>
-              <dd className="font-semibold">Rs 110k / month</dd>
+              <dt className="text-muted-foreground">Expected salary</dt>
+              <dd className="font-semibold">{profile?.expectedSalary || '—'}</dd>
             </div>
           </dl>
-          <Button variant="outline" className="mt-4 w-full">
-            <Zap className="h-4 w-4" />
-            Refine preferences
-          </Button>
+          <p className="mt-4 text-xs text-muted-foreground">
+            These come from your profile - update them under My profile.
+          </p>
         </SectionCard>
 
         <SectionCard title="Account" delay={200}>
           <ul className="space-y-3 text-sm">
             <li className="flex items-center justify-between">
               <span className="text-muted-foreground">Email</span>
-              <span className="font-semibold">bibek.thapa@outlook.com</span>
+              <span className="font-semibold">{user?.email ?? '—'}</span>
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-muted-foreground">Password</span>
-              <span className="font-semibold">Changed 3 months ago</span>
-            </li>
-            <li className="flex items-center justify-between">
-              <span className="text-muted-foreground">Two-factor</span>
-              <span className="font-semibold text-warning">Off</span>
+              <span className="text-muted-foreground">Phone</span>
+              <span className="font-semibold">{user?.phone ?? '—'}</span>
             </li>
           </ul>
           <div className="mt-4 space-y-2">
-            <Button variant="outline" className="w-full">
-              Change password
-            </Button>
-            <Button variant="outline" className="w-full">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setPwOpen((value) => !value)}
+            >
               <Shield className="h-4 w-4" />
-              Enable two-factor
+              {pwOpen ? 'Cancel' : 'Change password'}
             </Button>
+            {pwOpen ? (
+              <form onSubmit={handleChangePassword} className="space-y-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="pw-current">Current password</Label>
+                  <Input
+                    id="pw-current"
+                    type="password"
+                    value={currentPassword}
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                    autoComplete="current-password"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="pw-new">New password (min 8 characters)</Label>
+                  <Input
+                    id="pw-new"
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    autoComplete="new-password"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={changingPw || !currentPassword || newPassword.length < 8}
+                >
+                  {changingPw ? 'Saving…' : 'Save new password'}
+                </Button>
+              </form>
+            ) : null}
           </div>
         </SectionCard>
       </div>

@@ -70,6 +70,16 @@ export const uploadResume: RequestHandler = async (req, res, next) => {
   }
 };
 
+export const changePassword: RequestHandler = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    await authService.changePassword(req.user!.userId, currentPassword, newPassword);
+    res.json({ success: true, data: { message: 'Password changed' } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const logoutUser: RequestHandler = async (_req, res) => {
   res
     .clearCookie(COOKIE_NAME, { ...cookieOptions(), maxAge: undefined })

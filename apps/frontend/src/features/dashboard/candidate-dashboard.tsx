@@ -1229,7 +1229,7 @@ export function CandidateDashboard() {
           />
         )}
 
-        {view === 'settings' && <SettingsView />}
+        {view === 'settings' && <SettingsView profile={profile} />}
         {view === 'help' && <HelpView />}
       </main>
 

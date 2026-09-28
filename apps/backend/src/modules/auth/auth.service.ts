@@ -160,6 +160,20 @@ export class AuthService {
     return this.userRepo.update(userId, { ...input });
   }
 
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.userRepo.findById(userId);
+    if (!user || user.isDeleted) {
+      throw new AppError(404, 'User not found');
+    }
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      throw new AppError(400, 'Current password is incorrect');
+    }
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await this.userRepo.update(userId, { password: hashed });
+    return true;
+  }
+
   async uploadResume(
     userId: string,
     fileName: string,
