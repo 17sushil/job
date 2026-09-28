@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { readApiError, registerRequest } from '@/features/auth/api';
+import { OtpStep } from '@/features/auth/otp-step';
 import { PasswordInput } from '@/features/auth/password-input';
 
 interface RegisterFormProps {
@@ -16,6 +17,7 @@ interface RegisterFormProps {
 
 export function RegisterForm({ role }: RegisterFormProps) {
   const router = useRouter();
+  const [step, setStep] = useState<'details' | 'otp'>('details');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -50,14 +52,29 @@ export function RegisterForm({ role }: RegisterFormProps) {
         return;
       }
 
-      toast.success('Account created. Welcome to JobDev!');
-      router.push('/dashboard');
+      toast.success('Account created. Now verify the OTP.');
+      setStep('otp');
     } catch {
       toast.error('Network error. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (step === 'otp') {
+    return (
+      <OtpStep
+        identifier={identifier.trim()}
+        notice="Account created for"
+        backLabel="Back to details"
+        onBack={() => setStep('details')}
+        onVerified={() => {
+          toast.success('Verified. Welcome to JobDev!');
+          router.push('/dashboard');
+        }}
+      />
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">

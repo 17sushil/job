@@ -67,6 +67,14 @@ export class AuthService {
       : this.userRepo.findByMobile(normalizePhone(identifier));
   }
 
+  private async issueOtp(user: User) {
+    const otp = env.NODE_ENV === 'production' ? randomDigits(6) : TESTING_OTP;
+    const otpHash = await bcrypt.hash(otp, 10);
+    const otpExpiry = new Date(Date.now() + OTP_TTL_MS);
+    await this.userRepo.update(user.userId, { otpHash, otpExpiry });
+    console.log(`[AUTH] OTP for ${user.email ?? user.mobile}: ${otp}`);
+  }
+
   async register(input: RegisterInput) {
     const role =
       input.role === 'recruiter' ? UserRole.RECRUITER : UserRole.CANDIDATE;
@@ -98,6 +106,7 @@ export class AuthService {
       role,
     });
 
+    await this.issueOtp(user);
     return user;
   }
 
@@ -112,13 +121,7 @@ export class AuthService {
       throw new AppError(401, 'Invalid email or password');
     }
 
-    const otp = env.NODE_ENV === 'production' ? randomDigits(6) : TESTING_OTP;
-    const otpHash = await bcrypt.hash(otp, 10);
-    const otpExpiry = new Date(Date.now() + OTP_TTL_MS);
-    await this.userRepo.update(user.userId, { otpHash, otpExpiry });
-
-    console.log(`[AUTH] OTP for ${user.email ?? user.mobile}: ${otp}`);
-
+    await this.issueOtp(user);
     return { identifier: user.email ?? user.mobile };
   }
 

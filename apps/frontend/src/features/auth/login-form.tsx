@@ -1,18 +1,14 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, KeyRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  loginRequest,
-  readApiError,
-  verifyOtpRequest,
-} from '@/features/auth/api';
+import { loginRequest, readApiError } from '@/features/auth/api';
+import { OtpStep } from '@/features/auth/otp-step';
 import { PasswordInput } from '@/features/auth/password-input';
 
 export function LoginForm() {
@@ -20,9 +16,7 @@ export function LoginForm() {
   const [step, setStep] = useState<'credentials' | 'otp'>('credentials');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [otp, setOtp] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const otpInputRef = useRef<HTMLInputElement>(null);
 
   const handleCredentials = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -43,33 +37,6 @@ export function LoginForm() {
 
       toast.success('Password verified. Enter the OTP sent to you.');
       setStep('otp');
-      setTimeout(() => otpInputRef.current?.focus(), 50);
-    } catch {
-      toast.error('Network error. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleOtp = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (otp.length !== 6) {
-      toast.error('OTP must be 6 digits');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const res = await verifyOtpRequest(identifier.trim(), otp);
-
-      if (!res.ok) {
-        toast.error(await readApiError(res));
-        return;
-      }
-
-      toast.success('Logged in successfully');
-      router.push('/dashboard');
     } catch {
       toast.error('Network error. Please try again.');
     } finally {
@@ -79,46 +46,16 @@ export function LoginForm() {
 
   if (step === 'otp') {
     return (
-      <form onSubmit={handleOtp} className="animate-pop-in space-y-4">
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-primary-light px-3 py-2.5 text-sm text-primary-dark">
-          <KeyRound className="h-4 w-4 shrink-0" />
-          <span>
-            Enter the 6-digit OTP for <strong>{identifier}</strong>. For
-            testing, use <strong>123456</strong>.
-          </span>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="otp">One-time password</Label>
-          <Input
-            id="otp"
-            ref={otpInputRef}
-            inputMode="numeric"
-            maxLength={6}
-            value={otp}
-            onChange={(event) => setOtp(event.target.value.replace(/\D/g, ''))}
-            placeholder="123456"
-            className="text-center text-lg tracking-[0.5em]"
-            autoComplete="one-time-code"
-          />
-        </div>
-
-        <Button type="submit" className="w-full" disabled={submitting}>
-          {submitting ? 'Verifying…' : 'Verify and log in'}
-        </Button>
-
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full"
-          onClick={() => {
-            setStep('credentials');
-            setOtp('');
-          }}
-        >
-          <ArrowLeft className="h-4 w-4" /> Back to password
-        </Button>
-      </form>
+      <OtpStep
+        identifier={identifier.trim()}
+        notice="Enter the OTP for"
+        backLabel="Back to password"
+        onBack={() => setStep('credentials')}
+        onVerified={() => {
+          toast.success('Logged in successfully');
+          router.push('/dashboard');
+        }}
+      />
     );
   }
 

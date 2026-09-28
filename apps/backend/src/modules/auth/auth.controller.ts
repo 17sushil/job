@@ -12,10 +12,10 @@ const authService = new AuthService();
 export const register: RequestHandler = async (req, res, next) => {
   try {
     const user = await authService.register(req.body);
-    res
-      .status(201)
-      .cookie(COOKIE_NAME, signSession(user), cookieOptions())
-      .json({ success: true, data: { user: toSafeUser(user) } });
+    res.status(201).json({
+      success: true,
+      data: { requiresOtp: true, identifier: user.email ?? user.mobile },
+    });
   } catch (error) {
     next(error);
   }
