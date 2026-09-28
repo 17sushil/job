@@ -9,7 +9,8 @@
     "migration:run": "tsx node_modules/typeorm/cli.js -d src/database/data-source.ts migration:run",
     "migration:revert": "tsx node_modules/typeorm/cli.js -d src/database/data-source.ts migration:revert",
     "lint": "eslint src",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bootstrap:superadmin": "tsx scripts/bootstrap-superadmin.ts"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -20,8 +21,6 @@
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.0",
-    "rate-limit-redis": "^6.0.1",
-    "redis": "^6.2.1",
     "reflect-metadata": "^0.2.2",
     "typeorm": "^1.1.1",
     "zod": "^3.24.1"

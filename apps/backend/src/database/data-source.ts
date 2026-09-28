@@ -3,11 +3,12 @@ import path from 'node:path';
 import { DataSource } from 'typeorm';
 import { env } from '../config/env.js';
 import { User } from '../modules/user/user.entity.js';
+import { Job } from '../modules/job/job.entity.js';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: env.DATABASE_URL,
-  entities: [User],
+  entities: [User, Job],
   migrations: [path.join(__dirname, 'migrations', '*{.ts,.js}')],
   synchronize: false,
   logging: env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],

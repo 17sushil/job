@@ -1,50 +1,33 @@
 import type { RequestHandler } from 'express';
-import { AuthService } from './auth.service.js';
-import { UserService } from '../user/user.service.js';
+import {
+  AuthService,
+  COOKIE_NAME,
+  cookieOptions,
+  signSession,
+  toSafeUser,
+} from './auth.service.js';
 
 const authService = new AuthService();
-const userService = new UserService();
-
-export const login: RequestHandler = async (req, res, next) => {
-  try {
-    const result = await authService.login(req.body);
-    // Map fields for Sushil's frontend compatibility
-    const formattedUser = { 
-      ...result.user, 
-      id: result.user.userId,
-      identifier: result.user.email || result.user.mobile,
-      phone: result.user.mobile,
-      name: null,
-      role: result.user.role.toLowerCase()
-    };
-    res.json({ success: true, data: { token: result.token, user: formattedUser } });
-  } catch (error) {
-    next(error);
-  }
-};
 
 export const register: RequestHandler = async (req, res, next) => {
   try {
-    const user = await userService.createUser(req.body);
-    const { password, ...userWithoutPassword } = user;
-    const formattedUser = { 
-      ...userWithoutPassword, 
-      id: user.userId,
-      identifier: user.email || user.mobile,
-      phone: user.mobile,
-      name: null,
-      role: user.role.toLowerCase()
-    };
-    res.status(201).json({ success: true, data: { user: formattedUser } });
+    const user = await authService.register(req.body);
+    res
+      .status(201)
+      .cookie(COOKIE_NAME, signSession(user), cookieOptions())
+      .json({ success: true, data: { user: toSafeUser(user) } });
   } catch (error) {
     next(error);
   }
 };
 
-export const forgotPassword: RequestHandler = async (req, res, next) => {
+export const login: RequestHandler = async (req, res, next) => {
   try {
-    const result = await authService.forgotPassword(req.body);
-    res.json({ success: true, data: result });
+    const result = await authService.startLogin(req.body);
+    res.json({
+      success: true,
+      data: { requiresOtp: true, identifier: result.identifier },
+    });
   } catch (error) {
     next(error);
   }
@@ -52,8 +35,29 @@ export const forgotPassword: RequestHandler = async (req, res, next) => {
 
 export const verifyOtp: RequestHandler = async (req, res, next) => {
   try {
-    const result = await authService.verifyOtpAndResetPassword(req.body);
-    res.json({ success: true, data: result });
+    const user = await authService.verifyOtp(req.body);
+    res
+      .cookie(COOKIE_NAME, signSession(user), cookieOptions())
+      .json({ success: true, data: { user: toSafeUser(user) } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getCurrentUser: RequestHandler = async (req, res) => {
+  res.json({ success: true, data: { user: toSafeUser(req.user!) } });
+};
+
+export const logoutUser: RequestHandler = async (_req, res) => {
+  res
+    .clearCookie(COOKIE_NAME, { ...cookieOptions(), maxAge: undefined })
+    .json({ success: true, data: { message: 'Logged out' } });
+};
+
+export const updateProfile: RequestHandler = async (req, res, next) => {
+  try {
+    const user = await authService.updateProfile(req.user!.userId, req.body);
+    res.json({ success: true, data: { user: toSafeUser(user) } });
   } catch (error) {
     next(error);
   }

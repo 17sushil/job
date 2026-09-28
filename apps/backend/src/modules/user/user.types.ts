@@ -1,7 +1,22 @@
-import type { z } from 'zod';
-import type { User as UserEntity } from './user.entity.js';
-import type { createUserSchema, updateUserSchema } from './user.schema.js';
+import type { UserRole } from './user.entity.js';
 
-export type User = UserEntity;
-export type CreateUserInput = z.infer<typeof createUserSchema>;
-export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+export interface CreateUserInput {
+  email: string | null;
+  mobile: string;
+  password: string;
+  role: UserRole;
+}
+
+export type UpdateUserInput = Partial<{
+  email: string | null;
+  mobile: string;
+  password: string;
+  role: UserRole;
+  name: string | null;
+  otpHash: string | null;
+  otpExpiry: Date | null;
+  companyName: string | null;
+  contactNumber: string | null;
+  avatar: string | null;
+  isDeleted: boolean;
+}>;
