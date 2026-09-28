@@ -346,7 +346,7 @@ export interface Notification {
   text: string;
   time: string;
   read: boolean;
-  view: 'applications' | 'interviews' | 'saved' | 'messages' | 'jobs' | 'insights';
+  view: 'applications' | 'interviews' | 'saved' | 'jobs';
 }
 
 export const INITIAL_NOTIFICATIONS: Notification[] = [];

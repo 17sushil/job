@@ -2270,41 +2270,6 @@ export function ProfileView({
                 </p>
               </div>
             </div>
-
-            <ul className="mt-4 space-y-2">
-              {checklist.map((item) => (
-                <li key={item.key}>
-                  <button
-                    type="button"
-                    onClick={() => onToggleChecklist(item.key)}
-                    title={item.hint}
-                    className="flex w-full items-start gap-2.5 rounded-lg p-1 text-left transition-colors hover:bg-muted/60"
-                  >
-                    <span
-                      className={cn(
-                        'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-                        item.done
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border bg-card',
-                      )}
-                    >
-                      {item.done ? <Check className="h-3 w-3" /> : null}
-                    </span>
-                    <span className="text-sm">
-                      <span className={item.done ? 'text-muted-foreground' : 'font-medium'}>
-                        {item.label}
-                      </span>
-                      {!item.done ? (
-                        <span className="block text-xs text-muted-foreground">{item.hint}</span>
-                      ) : null}
-                    </span>
-                    <span className="ml-auto text-[10px] font-bold text-muted-foreground">
-                      +{item.weight}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
           </SectionCard>
 
           <SectionCard title="Visibility" delay={220}>
@@ -2315,11 +2280,11 @@ export function ProfileView({
               </li>
               <li className="flex items-center justify-between">
                 <span className="text-muted-foreground">Profile views (30d)</span>
-                <span className="font-semibold">41</span>
+                <span className="font-semibold">0</span>
               </li>
               <li className="flex items-center justify-between">
                 <span className="text-muted-foreground">Saved by recruiters</span>
-                <span className="font-semibold">7</span>
+                <span className="font-semibold">0</span>
               </li>
             </ul>
             <Button variant="outline" className="mt-4 w-full" onClick={onOpenSettings}>
