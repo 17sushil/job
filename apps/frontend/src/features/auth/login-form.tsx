@@ -140,6 +140,7 @@ export function LoginForm() {
             <button
               key={email}
               type="button"
+              suppressHydrationWarning
               onClick={() => fillAccount(email, pw)}
               className="group flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
               title={`${email} / ${pw} (OTP is 123456)`}
