@@ -21,6 +21,6 @@ export default function DashboardPage() {
     case 'superadmin':
       return <SuperAdminDashboard user={user} />;
     default:
-      return <CandidateDashboard user={user} />;
+      return <CandidateDashboard />;
   }
 }

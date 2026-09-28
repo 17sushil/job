@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Building2, Users } from 'lucide-react';
-import { toast } from '@/components/ui/use-toast';
+import { Building2, PencilLine, Users, X } from 'lucide-react';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { toast } from '@/components/ui/use-toast';
 import type { AuthUser } from '@/features/auth/api';
 import { RecruiterProfileForm } from '@/features/dashboard/recruiter-profile-form';
 import {
@@ -20,6 +21,7 @@ export function RecruiterDashboard({ user }: { user: AuthUser }) {
   const setUser = useAuthStore((state) => state.setUser);
   const [candidates, setCandidates] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
     apiGet<{ candidates: UserRow[] }>('/api/candidates')
@@ -32,28 +34,33 @@ export function RecruiterDashboard({ user }: { user: AuthUser }) {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="page-title">
-          {user.companyName ?? 'Recruiter dashboard'}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Your company profile and the candidates available to you.
-        </p>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="page-title">
+            {user.companyName ?? 'Recruiter dashboard'}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Your candidates and company profile.
+          </p>
+        </div>
+        <Button onClick={() => setProfileOpen(true)}>
+          <PencilLine className="h-4 w-4" /> Edit profile
+        </Button>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <Section title={`Candidates (${loading ? '…' : candidates.length})`}>
-          {loading ? (
-            <EmptyState title="Loading candidates…" />
-          ) : candidates.length === 0 ? (
-            <EmptyState
-              title="No candidates yet"
-              hint="Candidates appear here as soon as they sign up."
-            />
-          ) : (
-            <Card>
-              <CardContent className="p-0">
-                <table className="w-full text-sm">
+      <Section title={`Candidates (${loading ? '…' : candidates.length})`}>
+        {loading ? (
+          <EmptyState title="Loading candidates…" />
+        ) : candidates.length === 0 ? (
+          <EmptyState
+            title="No candidates yet"
+            hint="Candidates appear here as soon as they sign up."
+          />
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
                       <th className="px-5 py-3 font-semibold">Candidate</th>
@@ -85,22 +92,49 @@ export function RecruiterDashboard({ user }: { user: AuthUser }) {
                     ))}
                   </tbody>
                 </table>
-              </CardContent>
-            </Card>
-          )}
-        </Section>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </Section>
 
-        <Card className="h-fit">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Building2 className="h-4 w-4 text-primary" /> Company profile
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <RecruiterProfileForm user={user} onSaved={setUser} />
-          </CardContent>
-        </Card>
-      </div>
+      {profileOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/50 p-4 backdrop-blur-md">
+          <div className="animate-pop-in w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light">
+                  <Building2 className="h-5 w-5 text-primary" />
+                </span>
+                <div>
+                  <h2 className="text-base font-semibold leading-tight text-foreground">
+                    Company profile
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    How candidates see your company.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProfileOpen(false)}
+                aria-label="Close"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <RecruiterProfileForm
+              user={user}
+              onSaved={(nextUser) => {
+                setUser(nextUser);
+                setProfileOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
