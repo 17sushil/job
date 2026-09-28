@@ -33,6 +33,7 @@ import {
   TrendingUp,
   Upload,
   Video,
+  X,
   Zap,
 } from 'lucide-react';
 
@@ -1855,6 +1856,7 @@ export function ProfileView({
   onDownloadAts,
   onSaveProfile,
   onAddSkill,
+  onRemoveSkill,
   onAddExperience,
 }: {
   profile: CandidateProfile;
@@ -1876,6 +1878,7 @@ export function ProfileView({
     noticePeriod: string;
   }) => void;
   onAddSkill?: (skill: string) => void;
+  onRemoveSkill?: (skill: string) => void;
   onAddExperience?: (entry: { role: string; company: string; period: string }) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -2078,9 +2081,17 @@ export function ProfileView({
               {profile.skills.map((skill) => (
                 <span
                   key={skill}
-                  className="rounded-full bg-primary-light px-3 py-1 text-xs font-semibold text-primary-dark"
+                  className="flex items-center gap-1 rounded-full bg-primary-light py-1 pl-3 pr-1.5 text-xs font-semibold text-primary-dark"
                 >
                   {skill}
+                  <button
+                    type="button"
+                    onClick={() => onRemoveSkill?.(skill)}
+                    aria-label={`Remove ${skill}`}
+                    className="rounded-full p-0.5 transition-colors hover:bg-primary/20"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 </span>
               ))}
               <span className="flex items-center gap-1">

@@ -61,6 +61,9 @@ export class User {
   @Column({ type: 'timestamp with time zone', nullable: true })
   resumeUploadedAt!: Date | null;
 
+  @Column({ type: 'text', nullable: true })
+  parsedProfile!: string | null;
+
   @Column({ type: 'boolean', default: false })
   isDeleted!: boolean;
 

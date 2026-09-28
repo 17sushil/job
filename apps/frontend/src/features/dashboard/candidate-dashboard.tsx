@@ -75,6 +75,15 @@ import {
   StatusChip,
 } from './candidate/views';
 
+function parseStoredProfile(raw: string | null | undefined): Partial<CandidateProfile> {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Partial<CandidateProfile>;
+  } catch {
+    return {};
+  }
+}
+
 const LIVE_STATUS: Record<string, ApplicationStatus> = {
   NEW: 'Applied',
   REVIEWING: 'Shortlisted',
@@ -249,24 +258,32 @@ export function CandidateDashboard() {
   );
   const [toast, setToast] = useState<string | null>(null);
 
-  /* Profile mirrors the real logged-in account; editable during the session. */
-  const [profile, setProfile] = useState<CandidateProfile>(() => ({
-    ...INITIAL_PROFILE,
-    name: user?.name ?? '',
-    headline: '',
-    email: user?.email ?? '',
-    phone: user?.phone ?? '',
-    resumeFileName: user?.resumeFileName ?? '',
-  }));
+  /* Profile mirrors the real account, enriched by the ATS-parsed resume when
+     one was uploaded; editable during the session. */
+  const [profile, setProfile] = useState<CandidateProfile>(() => {
+    const stored = parseStoredProfile(user?.parsedProfile);
+    return {
+      ...INITIAL_PROFILE,
+      ...stored,
+      name: user?.name || stored.name || '',
+      email: user?.email ?? '',
+      phone: user?.phone ?? '',
+      resumeFileName: user?.resumeFileName ?? '',
+    };
+  });
 
   useEffect(() => {
-    setProfile((current) => ({
-      ...current,
-      name: user?.name ?? current.name,
-      email: user?.email ?? current.email,
-      phone: user?.phone ?? current.phone,
-      resumeFileName: user?.resumeFileName ?? current.resumeFileName,
-    }));
+    setProfile((current) => {
+      const stored = parseStoredProfile(user?.parsedProfile);
+      return {
+        ...current,
+        ...stored,
+        name: user?.name || stored.name || current.name,
+        email: user?.email ?? current.email,
+        phone: user?.phone ?? current.phone,
+        resumeFileName: user?.resumeFileName ?? current.resumeFileName,
+      };
+    });
   }, [user]);
 
   /* Data-driven checklist signals track the real profile; references/video
@@ -1193,6 +1210,12 @@ export function CandidateDashboard() {
                   ? current
                   : { ...current, skills: [...current.skills, skill] },
               )
+            }
+            onRemoveSkill={(skill) =>
+              setProfile((current) => ({
+                ...current,
+                skills: current.skills.filter((item) => item !== skill),
+              }))
             }
             onAddExperience={(entry) =>
               setProfile((current) => ({

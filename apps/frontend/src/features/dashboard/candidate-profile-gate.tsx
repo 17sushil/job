@@ -14,7 +14,41 @@ import {
   uploadResumeRequest,
   type AuthUser,
 } from '@/features/auth/api';
+import {
+  canParseResume,
+  parseAtsResume,
+} from '@/features/dashboard/candidate/ats-service';
+import type { ResumeDocument } from '@/features/dashboard/candidate/demo-resume-pdf';
 import { useAuthStore } from '@/store/auth';
+
+const sectionBlocks = (doc: ResumeDocument, pattern: RegExp) =>
+  doc.sections
+    .filter((section) => pattern.test(section.title))
+    .flatMap((section) => section.blocks.map((block) => block.text.trim()))
+    .filter(Boolean);
+
+/** Turns the ATS parser output into the profile fields the dashboard shows. */
+export function mapResumeToProfile(doc: ResumeDocument) {
+  const about = sectionBlocks(doc, /summary|objective|about|profile/i).join(' ');
+  const skills = sectionBlocks(doc, /skill|technolog|stack/i);
+  const experience = sectionBlocks(doc, /experience|employment|work/i).map((text) => {
+    const [role, company = ''] = text.split(/\s[·@|-]\s/);
+    return { role: role ?? text, company, period: '', highlights: [] };
+  });
+  const education = sectionBlocks(doc, /education|academic/i).map((text) => ({
+    degree: text,
+    school: '',
+    period: '',
+  }));
+  return {
+    name: doc.name ?? '',
+    headline: doc.headline ?? '',
+    about,
+    skills,
+    experience,
+    education,
+  };
+}
 
 const MAX_RESUME_BYTES = 2 * 1024 * 1024;
 const ACCEPTED = '.pdf,.doc,.docx';
@@ -76,7 +110,22 @@ export function CandidateProfileGate() {
       });
       const base64 = dataUrl.split(',')[1] ?? '';
 
-      const res = await uploadResumeRequest(file.name, base64);
+      /* Best-effort auto-fill: when the team's ATS parser is configured, send
+         the resume through it and store the extracted profile too. */
+      let parsed: ReturnType<typeof mapResumeToProfile> | null = null;
+      if (canParseResume()) {
+        try {
+          const doc = await parseAtsResume({ rawFile: file });
+          parsed = mapResumeToProfile(doc);
+          if (!name.trim() && parsed.name) {
+            setName(parsed.name);
+          }
+        } catch {
+          /* Parser unreachable — the upload still succeeds without auto-fill. */
+        }
+      }
+
+      const res = await uploadResumeRequest(file.name, base64, parsed);
       if (!res.ok) {
         toast({ title: await readApiError(res), variant: 'destructive' });
         return;

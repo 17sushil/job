@@ -21,5 +21,6 @@ export type UpdateUserInput = Partial<{
   resumeFileName: string | null;
   resumeData: string | null;
   resumeUploadedAt: Date | null;
+  parsedProfile: string | null;
   isDeleted: boolean;
 }>;

@@ -57,8 +57,13 @@ export const uploadResume: RequestHandler = async (req, res, next) => {
     if (req.user!.role.toLowerCase() !== 'candidate') {
       throw new AppError(403, 'Only candidates can upload a resume');
     }
-    const { fileName, dataBase64 } = req.body;
-    const user = await authService.uploadResume(req.user!.userId, fileName, dataBase64);
+    const { fileName, dataBase64, parsed } = req.body;
+    const user = await authService.uploadResume(
+      req.user!.userId,
+      fileName,
+      dataBase64,
+      parsed ?? null,
+    );
     res.json({ success: true, data: { user: toSafeUser(user) } });
   } catch (error) {
     next(error);

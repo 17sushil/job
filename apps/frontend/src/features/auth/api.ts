@@ -13,6 +13,7 @@ export interface AuthUser {
   contactNumber: string | null;
   avatar: string | null;
   resumeFileName: string | null;
+  parsedProfile: string | null;
   createdAt: string;
 }
 
@@ -83,10 +84,14 @@ export async function logoutRequest() {
   return apiClient('/api/auth/logout', { method: 'POST' });
 }
 
-export async function uploadResumeRequest(fileName: string, dataBase64: string) {
+export async function uploadResumeRequest(
+  fileName: string,
+  dataBase64: string,
+  parsed?: Record<string, unknown> | null,
+) {
   return apiClient('/api/auth/resume', {
     method: 'POST',
-    ...jsonInit({ fileName, dataBase64 }),
+    ...jsonInit({ fileName, dataBase64, parsed }),
   });
 }
 
