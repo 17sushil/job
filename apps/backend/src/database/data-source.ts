@@ -11,6 +11,9 @@ export const AppDataSource = new DataSource({
   url: env.DATABASE_URL,
   entities: [User, Job, Application],
   migrations: [path.join(__dirname, 'migrations', '*{.ts,.js}')],
+  /* Additive migrations only — boot-time run keeps every environment
+     (laptop, Render, fresh clones) schema-current with zero manual steps. */
+  migrationsRun: true,
   synchronize: false,
   logging: env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   ssl: env.DB_SSL ? { rejectUnauthorized: env.DB_SSL_REJECT_UNAUTHORIZED } : undefined,

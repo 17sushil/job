@@ -1,9 +1,11 @@
 import { database } from './config/database.js';
 import { env } from './config/env.js';
+import { seedTestAccounts } from './database/seed.js';
 
 const start = async () => {
   try {
     await database.connect();
+    await seedTestAccounts();
   } catch (err) {
     console.error('Unable to connect to the database:', err);
     process.exit(1);
