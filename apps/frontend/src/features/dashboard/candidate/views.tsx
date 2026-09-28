@@ -2215,6 +2215,44 @@ export function ProfileView({
               </div>
             </div>
           </SectionCard>
+
+          <SectionCard title="Resume" delay={160}>
+            <div className="flex items-center gap-3 rounded-xl border border-border p-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light">
+                <FileText className="h-5 w-5 text-primary-dark" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">
+                  {atsReady && atsFileName ? atsFileName : profile.resumeFileName || 'No resume yet'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {atsReady
+                    ? 'ATS-friendly version ready to download'
+                    : profile.resumeFileName
+                      ? 'Stored with your profile · not ATS-checked yet'
+                      : 'Upload a PDF or DOCX to complete your profile'}
+                </p>
+              </div>
+              {atsReady ? (
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+                  <FileCheck2 className="h-3.5 w-3.5" />
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1" onClick={onOpenResume}>
+                <Upload className="h-3.5 w-3.5" />
+                {atsReady ? 'Replace file' : 'Upload resume'}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onDownloadAts}>
+                <Download className="h-3.5 w-3.5" />
+                {atsReady ? 'Download PDF' : 'Get ATS PDF'}
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Upload a PDF or DOCX and download the ATS-friendly version as PDF.
+            </p>
+          </SectionCard>
         </div>
 
         {/* Side column */}
@@ -2288,42 +2326,6 @@ export function ProfileView({
                 </li>
               ))}
             </ul>
-          </SectionCard>
-
-          <SectionCard title="Resume" delay={160}>
-            <div className="flex items-center gap-3 rounded-xl border border-border p-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light">
-                <FileText className="h-5 w-5 text-primary-dark" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">
-                  {atsReady && atsFileName ? atsFileName : profile.resumeFileName}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {atsReady
-                    ? 'ATS-friendly version ready to download'
-                    : `Uploaded ${profile.resumeUpdatedDaysAgo}d ago · not ATS-checked yet`}
-                </p>
-              </div>
-              {atsReady ? (
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
-                  <FileCheck2 className="h-3.5 w-3.5" />
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1" onClick={onOpenResume}>
-                <Upload className="h-3.5 w-3.5" />
-                {atsReady ? 'Replace file' : 'Upload resume'}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={onDownloadAts}>
-                <Download className="h-3.5 w-3.5" />
-                {atsReady ? 'Download PDF' : 'Get ATS PDF'}
-              </Button>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Upload a PDF or DOCX and download the ATS-friendly version as PDF.
-            </p>
           </SectionCard>
 
           <SectionCard title="Visibility" delay={220}>

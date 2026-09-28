@@ -644,7 +644,7 @@ export function CandidateDashboard() {
     : null;
 
   return (
-    <div className="flex flex-col gap-4 lg:h-[calc(100vh-8rem)] lg:flex-row lg:gap-6">
+    <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
       <CandidateProfileGate />
       <CandidateSidebar
         active={view}
@@ -663,7 +663,7 @@ export function CandidateDashboard() {
         }}
       />
 
-      <main className="min-w-0 flex-1 space-y-4 overflow-y-auto pr-1 scrollbar-slim">
+      <main className="min-w-0 flex-1 space-y-4">
         {/* Greeting + global actions */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="animate-fade-in-up">

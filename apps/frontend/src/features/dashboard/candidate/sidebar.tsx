@@ -154,7 +154,7 @@ export function Sidebar({
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col gap-4 overflow-y-auto border-r border-border bg-card p-4 scrollbar-slim lg:flex lg:h-full">
+      <aside className="hidden w-64 shrink-0 flex-col gap-4 overflow-y-auto border-r border-border bg-card p-4 scrollbar-slim lg:flex lg:sticky lg:top-16 lg:max-h-[calc(100vh-5rem)] lg:self-start">
         {nav}
         <div className="mt-auto space-y-3">
           {typeof strengthPercent === 'number' ? (
