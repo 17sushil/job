@@ -20,6 +20,7 @@ import {
 } from '@/features/auth/api';
 import { RecruiterProfileGate } from '@/features/dashboard/recruiter-profile-gate';
 import { fetchSessionUser } from '@/lib/api-helpers';
+import { UNAUTHORIZED_EVENT } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth';
 import { useThemeEffect } from '@/store/theme';
 
@@ -47,6 +48,19 @@ export default function DashboardLayout({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      clearUser();
+      toast({
+        title: 'Session ended. Please log in again.',
+        variant: 'destructive',
+      });
+      router.replace('/login');
+    };
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+  }, [clearUser, router]);
 
   useEffect(() => {
     let active = true;
