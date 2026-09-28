@@ -50,22 +50,44 @@ export default function DashboardLayout({
 
   useEffect(() => {
     let active = true;
-    fetchSessionUser()
-      .then((sessionUser) => {
+
+    const verifySession = async () => {
+      try {
+        const sessionUser = await fetchSessionUser();
         if (!active) return;
-        if (!sessionUser) {
-          router.replace('/login');
+
+        if (sessionUser) {
+          setUser(sessionUser);
+          setChecking(false);
           return;
         }
-        setUser(sessionUser);
-      })
-      .catch(() => {
-        if (!active) return;
+
+        // /me rejected the session. If we just handed off a fresh session
+        // (user + token already in the store from signup/login OTP), trust
+        // it instead of bouncing to the login page.
+        const state = useAuthStore.getState();
+        if (state.user && state.token) {
+          setChecking(false);
+          return;
+        }
+
         router.replace('/login');
-      })
-      .finally(() => {
-        if (active) setChecking(false);
-      });
+      } catch {
+        if (!active) return;
+        const state = useAuthStore.getState();
+        if (state.user && state.token) {
+          setChecking(false);
+          return;
+        }
+        toast({
+          title: 'Not authenticated. Please log in again.',
+          variant: 'destructive',
+        });
+        router.replace('/login');
+      }
+    };
+
+    void verifySession();
     return () => {
       active = false;
     };
