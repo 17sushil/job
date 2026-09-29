@@ -7,6 +7,7 @@ import { toast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   readApiError,
   updateProfileRequest,
@@ -22,6 +23,7 @@ interface RecruiterProfileFormProps {
 
 export function RecruiterProfileForm({ user, onSaved }: RecruiterProfileFormProps) {
   const [companyName, setCompanyName] = useState(user.companyName ?? '');
+  const [aboutCompany, setAboutCompany] = useState(user.aboutCompany ?? '');
   const [contactNumber, setContactNumber] = useState(user.contactNumber ?? '');
   const [avatar, setAvatar] = useState<string | null>(user.avatar);
   const [saving, setSaving] = useState(false);
@@ -66,6 +68,7 @@ export function RecruiterProfileForm({ user, onSaved }: RecruiterProfileFormProp
     try {
       const res = await updateProfileRequest({
         companyName: companyName.trim(),
+        aboutCompany: aboutCompany.trim() || null,
         contactNumber: contactNumber.trim(),
         avatar,
       });
@@ -121,6 +124,22 @@ export function RecruiterProfileForm({ user, onSaved }: RecruiterProfileFormProp
           onChange={(event) => setCompanyName(event.target.value)}
           placeholder="Acme Pvt. Ltd."
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="about-company">About the company</Label>
+        <Textarea
+          id="about-company"
+          value={aboutCompany}
+          onChange={(event) => setAboutCompany(event.target.value)}
+          placeholder="What your company does, the team, and what it is like to work here. Candidates see this on your job posts."
+          rows={4}
+          maxLength={600}
+        />
+        <p className="text-xs text-muted-foreground">
+          {aboutCompany.trim().length}/600 characters. Shown to candidates on
+          your company profile and job posts.
+        </p>
       </div>
 
       <div className="space-y-2">

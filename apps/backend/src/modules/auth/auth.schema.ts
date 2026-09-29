@@ -25,6 +25,11 @@ export const updateProfileSchema = z
   .object({
     name: z.string().min(2).max(80).optional(),
     companyName: z.string().min(2, 'Company name is too short').max(120).optional(),
+    aboutCompany: z
+      .string()
+      .max(600, 'Keep the company intro under 600 characters')
+      .optional()
+      .nullable(),
     contactNumber: z
       .string()
       .regex(/^[+]?[0-9\s()-]{7,15}$/, 'Enter a valid contact number')

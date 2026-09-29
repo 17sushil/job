@@ -35,6 +35,9 @@ export class Job {
   @Column({ type: 'boolean', default: false })
   isDeleted!: boolean;
 
+  @Column({ type: 'uuid', nullable: true })
+  postedBy!: string | null;
+
   @CreateDateColumn({ name: 'createdAt', type: 'timestamp with time zone' })
   createdAt!: Date;
 

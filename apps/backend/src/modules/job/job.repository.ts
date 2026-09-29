@@ -19,6 +19,18 @@ export class JobRepository {
     return this.repository.findOneBy({ id });
   }
 
+  async findByPostedBy(postedBy: string) {
+    return this.repository.find({
+      where: { postedBy, isDeleted: false },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async updateStatus(id: string, status: string) {
+    await this.repository.update(id, { status });
+    return this.repository.findOneBy({ id });
+  }
+
   async create(data: Partial<Job>) {
     return this.repository.save(this.repository.create(data));
   }

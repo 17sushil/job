@@ -94,16 +94,20 @@ const daysSince = (iso: string) =>
   Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
 
 function mapLiveJob(job: JobRow): JobPosting {
+  const metadata = job.metadata ?? {};
+  const str = (value: unknown) =>
+    typeof value === 'string' && value.trim() ? value.trim() : null;
+  const location = job.location || 'Nepal';
   return {
     id: job.id,
     title: job.title,
     company: job.company,
     companyInitials: initialsOf(job.company),
-    department: '',
-    location: job.location || 'Nepal',
-    workMode: 'On-site',
-    type: 'Full-time',
-    salary: 'Negotiable',
+    department: str(metadata.department) ?? '',
+    location,
+    workMode: /remote/i.test(location) ? 'Remote' : 'On-site',
+    type: (str(metadata.employmentType) as JobPosting['type'] | null) ?? 'Full-time',
+    salary: str(metadata.salary) ?? 'Negotiable',
     postedDaysAgo: daysSince(job.createdAt),
     postedOn: new Date(job.createdAt).toLocaleDateString(undefined, {
       month: 'short',

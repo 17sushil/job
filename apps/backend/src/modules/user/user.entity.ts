@@ -46,6 +46,9 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   companyName!: string | null;
 
+  @Column({ type: 'text', nullable: true })
+  aboutCompany!: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   contactNumber!: string | null;
 

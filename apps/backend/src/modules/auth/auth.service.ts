@@ -40,6 +40,7 @@ export const toSafeUser = (user: User) => ({
   name: user.name,
   role: user.role.toLowerCase(),
   companyName: user.companyName,
+  aboutCompany: user.aboutCompany ?? null,
   contactNumber: user.contactNumber,
   avatar: user.avatar,
   resumeFileName: user.resumeFileName ?? null,

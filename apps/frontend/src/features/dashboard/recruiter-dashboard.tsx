@@ -14,6 +14,8 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { toast } from '@/components/ui/use-toast';
+import { apiGet, apiPatch, apiPost, type JobRow } from '@/features/dashboard/shared';
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
@@ -42,6 +44,33 @@ import {
   SettingsView,
   StatusChip,
 } from './recruiter/views';
+
+const daysSince = (iso: string) =>
+  Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+
+/* Map an API job row into the recruiter workspace Job shape. */
+function mapApiJob(row: JobRow): Job {
+  const metadata = row.metadata ?? {};
+  const str = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null);
+  const type = (str(metadata.employmentType) ?? 'Full-time') as Job['type'];
+  return {
+    id: row.id,
+    title: row.title,
+    department: str(metadata.department) ?? '',
+    location: row.location ?? 'Remote',
+    type,
+    salary: str(metadata.salary) ?? 'Negotiable',
+    status: row.status === 'paused' ? 'Paused' : row.status === 'closed' ? 'Closed' : 'Active',
+    applicants: 0,
+    views: 0,
+    postedDaysAgo: daysSince(row.createdAt),
+    postedOn: new Date(row.createdAt).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }),
+  };
+}
 
 function StatCard({
   label,
@@ -112,6 +141,15 @@ export function RecruiterDashboard() {
   const [jobs, setJobs] = useState<Job[]>(INITIAL_JOBS);
   const [applicants, setApplicants] =
     useState<Applicant[]>(INITIAL_APPLICANTS);
+
+  /* Jobs are real rows: load what this recruiter has posted. */
+  useEffect(() => {
+    apiGet<{ jobs: JobRow[] }>('/api/jobs/mine')
+      .then((data) => setJobs(data.jobs.map(mapApiJob)))
+      .catch((error: Error) =>
+        toast({ title: error.message, variant: 'destructive' }),
+      );
+  }, []);
   /* Notifications persist in localStorage so read state survives reloads. */
   const [notifications, setNotifications] = useState<Notification[]>(() => {
     if (typeof window === 'undefined') return INITIAL_NOTIFICATIONS;
@@ -262,11 +300,39 @@ export function RecruiterDashboard() {
 
   const unread = notifications.filter((n) => !n.read).length;
 
-  function addJob(job: Job) {
-    setJobs((current) => [job, ...current]);
+  async function addJob(job: Job) {
+    try {
+      const data = await apiPost<{ job: JobRow }>('/api/jobs', {
+        title: job.title,
+        location: job.location,
+        description: job.description ?? null,
+        department: job.department || null,
+        employmentType: job.type,
+        salary: job.salary || null,
+      });
+      /* Saved job rows power the candidate side too - their keyword chips
+         derive from these posts automatically. */
+      setJobs((current) => [mapApiJob(data.job), ...current]);
+    } catch (error) {
+      toast({
+        title: error instanceof Error ? error.message : 'Could not post the job',
+        variant: 'destructive',
+      });
+    }
   }
 
-  function setJobStatus(id: string, status: JobStatus) {
+  async function setJobStatus(id: string, status: JobStatus) {
+    const apiStatus =
+      status === 'Active' ? 'open' : status === 'Paused' ? 'paused' : 'closed';
+    try {
+      await apiPatch(`/api/jobs/${id}/status`, { status: apiStatus });
+    } catch (error) {
+      toast({
+        title: error instanceof Error ? error.message : 'Could not update the job',
+        variant: 'destructive',
+      });
+      return;
+    }
     const changedOn =
       status === 'Active'
         ? undefined
