@@ -39,7 +39,6 @@ import {
   HelpView,
   JobDrawer,
   JobsView,
-  MessagesView,
   SettingsView,
   StatusChip,
 } from './recruiter/views';
@@ -117,7 +116,7 @@ export function RecruiterDashboard() {
   const [notifications, setNotifications] = useState<Notification[]>(() => {
     if (typeof window === 'undefined') return INITIAL_NOTIFICATIONS;
     try {
-      const raw = window.localStorage.getItem('jobdev-notifications');
+      const raw = window.localStorage.getItem('jobdev-recruiter-notifications');
       if (raw) return JSON.parse(raw) as Notification[];
     } catch {
       /* fall back to the demo set */
@@ -128,7 +127,7 @@ export function RecruiterDashboard() {
   useEffect(() => {
     try {
       window.localStorage.setItem(
-        'jobdev-notifications',
+        'jobdev-recruiter-notifications',
         JSON.stringify(notifications),
       );
     } catch {
@@ -136,6 +135,22 @@ export function RecruiterDashboard() {
     }
   }, [notifications]);
   const [notifOpen, setNotifOpen] = useState(false);
+
+  /* The navbar bell + gear live in the shared layout; they drive this
+     dashboard through custom events. */
+  useEffect(() => {
+    const onView = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail) setView(detail as RecruiterView);
+    };
+    const onNotifications = () => setNotifOpen((value) => !value);
+    window.addEventListener('jobdev:view', onView);
+    window.addEventListener('jobdev:notifications', onNotifications);
+    return () => {
+      window.removeEventListener('jobdev:view', onView);
+      window.removeEventListener('jobdev:notifications', onNotifications);
+    };
+  }, []);
   const [jobFilter, setJobFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<ApplicantStatus | 'All'>(
     'All',
@@ -404,28 +419,15 @@ export function RecruiterDashboard() {
               )}
             </div>
 
-            {/* Notifications */}
-            <div className="relative">
-              <button
-                type="button"
-                aria-label={`Notifications (${unread} unread)`}
-                onClick={() => setNotifOpen((value) => !value)}
-                className="relative rounded-xl border border-border bg-card p-2.5 text-muted-foreground transition-all hover:scale-105 hover:text-primary-dark"
-              >
-                <Bell className="h-4 w-4" />
-                {unread > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground animate-pulse-dot">
-                    {unread}
-                  </span>
-                )}
-              </button>
+            {/* Notifications dropdown, opened from the navbar bell */}
+            <div>
               {notifOpen && (
                 <>
                   <div
                     className="fixed inset-0 z-30"
                     onClick={() => setNotifOpen(false)}
                   />
-                  <div className="animate-pop-in absolute right-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+                  <div className="animate-pop-in fixed right-4 top-16 z-50 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl">
                     <div className="flex items-center justify-between border-b border-border bg-muted/50 px-4 py-3">
                       <p className="text-sm font-bold">Notifications</p>
                       <button
@@ -442,6 +444,11 @@ export function RecruiterDashboard() {
                       </button>
                     </div>
                     <ul className="max-h-80 overflow-y-auto p-2 scrollbar-slim">
+                      {notifications.length === 0 && (
+                        <li className="p-4 text-center text-xs text-muted-foreground">
+                          No notifications yet.
+                        </li>
+                      )}
                       {notifications.map((notification) => (
                         <li key={notification.id}>
                           <button
@@ -510,6 +517,14 @@ export function RecruiterDashboard() {
 
         {view === 'overview' && (
           <>
+            <div className="animate-fade-in-up overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+              <img
+                src="/jobdev-poster.png"
+                alt="JobDev - find work that fits, apply in one click"
+                className="h-auto w-full object-cover"
+              />
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {stats.map((stat, index) => (
                 <StatCard
@@ -673,7 +688,6 @@ export function RecruiterDashboard() {
           />
         )}
 
-        {view === 'messages' && <MessagesView />}
         {view === 'analytics' && <AnalyticsView />}
         {view === 'company' && <CompanyView />}
         {view === 'settings' && <SettingsView />}

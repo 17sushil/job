@@ -159,7 +159,7 @@ export default function DashboardLayout({
                 {ROLE_LABELS[user.role] ?? user.role}
               </span>
             </span>
-            {user.role === 'candidate' && (
+            {(user.role === 'candidate' || user.role === 'recruiter') && (
               <>
                 <button
                   type="button"

@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   LifeBuoy,
   LogOut,
-  MessageSquare,
   Settings,
   Briefcase,
   Users,
@@ -19,7 +18,6 @@ export type RecruiterView =
   | 'overview'
   | 'jobs'
   | 'applicants'
-  | 'messages'
   | 'analytics'
   | 'company'
   | 'settings'
@@ -32,9 +30,8 @@ export const NAV_ITEMS: Array<{
   section: 'main' | 'general';
 }> = [
   { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
-  { id: 'jobs', label: 'My Jobs', icon: Briefcase, section: 'main' },
+  { id: 'jobs', label: 'Post job', icon: Briefcase, section: 'main' },
   { id: 'applicants', label: 'Applicants', icon: Users, section: 'main' },
-  { id: 'messages', label: 'Messages', icon: MessageSquare, section: 'main' },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, section: 'main' },
   { id: 'company', label: 'Company profile', icon: Building2, section: 'general' },
   { id: 'settings', label: 'Settings', icon: Settings, section: 'general' },
