@@ -25,14 +25,50 @@ export class User {
   })
   role!: UserRole;
 
-  @Column({ type: 'varchar', unique: true })
-  email!: string;
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  email!: string | null;
 
   @Column({ type: 'varchar', unique: true })
   mobile!: string;
 
   @Column({ type: 'varchar' })
   password!: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  name!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  otpHash!: string | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  otpExpiry!: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  companyName!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  aboutCompany!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  contactNumber!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  avatar!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  resumeFileName!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  resumeData!: string | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  resumeUploadedAt!: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  parsedProfile!: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  isDeleted!: boolean;
 
   @CreateDateColumn({ name: 'createdAt', type: 'timestamp with time zone' })
   createdAt!: Date;

@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Bell,
   Bookmark,
   Briefcase,
   CalendarCheck,
@@ -11,15 +10,14 @@ import {
   Download,
   Eye,
   FileCheck2,
-  Gauge,
-  Send,
   Sparkles,
   UploadCloud,
-  Video,
+  X,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { apiGet, apiPost, type JobRow } from '@/features/dashboard/shared';
+import { CandidateProfileGate } from '@/features/dashboard/candidate-profile-gate';
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
@@ -29,9 +27,7 @@ import {
   type Application,
   type ApplicationStatus,
   type CandidateProfile,
-  INITIAL_ACTIVITY,
   INITIAL_APPLICATIONS,
-  INITIAL_CONVERSATIONS,
   INITIAL_INTERVIEWS,
   INITIAL_JOBS,
   INITIAL_NOTIFICATIONS,
@@ -42,7 +38,6 @@ import {
   profileCompleteness,
   PROFILE_CHECKLIST,
   type ChecklistItem,
-  type Conversation,
   type Notification,
 } from './candidate/mock-data';
 import { Sidebar as CandidateSidebar, type CandidateView } from './candidate/sidebar';
@@ -54,16 +49,13 @@ import {
 } from './candidate/ats-service';
 import { ApplicationsTrend } from './candidate/charts';
 import {
-  ActivityFeed,
   ApplicationDrawer,
   ApplicationsView,
   EmptyState,
   HelpView,
-  InsightsView,
   InterviewsView,
   JobDrawer,
   JobsView,
-  MessagesView,
   ProfileView,
   SavedJobsView,
   SectionCard,
@@ -71,6 +63,105 @@ import {
   StagePills,
   StatusChip,
 } from './candidate/views';
+
+function parseStoredProfile(raw: string | null | undefined): Partial<CandidateProfile> {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Partial<CandidateProfile>;
+  } catch {
+    return {};
+  }
+}
+
+const LIVE_STATUS: Record<string, ApplicationStatus> = {
+  NEW: 'Applied',
+  REVIEWING: 'Shortlisted',
+  INTERVIEW: 'Interview',
+  HIRED: 'Hired',
+  REJECTED: 'Rejected',
+};
+
+const initialsOf = (value: string) =>
+  value
+    .split(/\s+/)
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'JD';
+
+const daysSince = (iso: string) =>
+  Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+
+function mapLiveJob(job: JobRow): JobPosting {
+  const metadata = job.metadata ?? {};
+  const str = (value: unknown) =>
+    typeof value === 'string' && value.trim() ? value.trim() : null;
+  const location = job.location || 'Nepal';
+  return {
+    id: job.id,
+    title: job.title,
+    company: job.company,
+    companyInitials: initialsOf(job.company),
+    department: str(metadata.department) ?? '',
+    location,
+    workMode: /remote/i.test(location) ? 'Remote' : 'On-site',
+    type: (str(metadata.employmentType) as JobPosting['type'] | null) ?? 'Full-time',
+    salary: str(metadata.salary) ?? 'Negotiable',
+    postedDaysAgo: daysSince(job.createdAt),
+    postedOn: new Date(job.createdAt).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    }),
+    applicants: 0,
+    views: 0,
+    match: 0,
+    matchedSkills: [],
+    missingSkills: [],
+    reasons: [],
+    description: job.description ?? '',
+    requirements: [],
+  };
+}
+
+function mapLiveApplication(application: {
+  id: string;
+  status: string;
+  createdAt: string;
+  job: JobRow | null;
+}): Application {
+  const job = application.job;
+  return {
+    id: application.id,
+    jobId: job?.id ?? '',
+    title: job?.title ?? 'Removed job',
+    company: job?.company ?? '',
+    companyInitials: initialsOf(job?.company ?? 'Job Dev'),
+    location: job?.location ?? '',
+    workMode: 'On-site',
+    type: 'Full-time',
+    salary: 'Negotiable',
+    status: LIVE_STATUS[application.status] ?? 'Applied',
+    match: 0,
+    appliedDaysAgo: daysSince(application.createdAt),
+    appliedOn: new Date(application.createdAt).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    }),
+    resumeVersion: 'My resume',
+    source: 'JobDev',
+    timeline: [
+      {
+        status: 'Applied',
+        when: new Date(application.createdAt).toLocaleDateString(undefined, {
+          month: 'short',
+          day: 'numeric',
+        }),
+        note: 'Application submitted with your uploaded resume.',
+      },
+    ],
+  };
+}
 
 function StatCard({
   label,
@@ -154,10 +245,87 @@ export function CandidateDashboard() {
   const [jobs, setJobs] = useState<JobPosting[]>(INITIAL_JOBS);
   const [applications, setApplications] = useState<Application[]>(INITIAL_APPLICATIONS);
   const [savedIds, setSavedIds] = useState<string[]>(INITIAL_SAVED_IDS);
-  const [conversations, setConversations] = useState<Conversation[]>(INITIAL_CONVERSATIONS);
-  const [checklist, setChecklist] = useState<ChecklistItem[]>(PROFILE_CHECKLIST);
-  const [profile] = useState<CandidateProfile>(INITIAL_PROFILE);
+
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(() =>
+    PROFILE_CHECKLIST.map((item) => ({ ...item, done: false })),
+  );
   const [toast, setToast] = useState<string | null>(null);
+
+  /* Profile mirrors the real account, enriched by the ATS-parsed resume when
+     one was uploaded; editable during the session. */
+  const [profile, setProfile] = useState<CandidateProfile>(() => {
+    const stored = parseStoredProfile(user?.parsedProfile);
+    return {
+      ...INITIAL_PROFILE,
+      ...stored,
+      name: user?.name || stored.name || '',
+      email: user?.email ?? '',
+      phone: user?.phone ?? '',
+      resumeFileName: user?.resumeFileName ?? '',
+    };
+  });
+
+  useEffect(() => {
+    setProfile((current) => {
+      const stored = parseStoredProfile(user?.parsedProfile);
+      return {
+        ...current,
+        ...stored,
+        name: user?.name || stored.name || current.name,
+        email: user?.email ?? current.email,
+        phone: user?.phone ?? current.phone,
+        resumeFileName: user?.resumeFileName ?? current.resumeFileName,
+      };
+    });
+  }, [user]);
+
+  /* Data-driven checklist signals track the real profile; references/video
+     stay manual because only the candidate knows about them. */
+  useEffect(() => {
+    setChecklist((current) =>
+      current.map((item) => {
+        switch (item.key) {
+          case 'links':
+            return { ...item, done: profile.links.length > 0 };
+          case 'education':
+            return { ...item, done: profile.education.length > 0 };
+          case 'salary':
+            return { ...item, done: Boolean(profile.expectedSalary) };
+          case 'phone':
+            return { ...item, done: Boolean(profile.phone) };
+          case 'workModes':
+            return { ...item, done: profile.workModes.length > 0 };
+          default:
+            return item;
+        }
+      }),
+    );
+  }, [profile]);
+
+  /* Live data: jobs and applications come from the API, not mock data. */
+  const loadLiveData = useCallback(async () => {
+    try {
+      const [jobsData, applicationsData] = await Promise.all([
+        apiGet<{ jobs: JobRow[] }>('/api/jobs'),
+        apiGet<{
+          applications: Array<{
+            id: string;
+            status: string;
+            createdAt: string;
+            job: JobRow | null;
+          }>;
+        }>('/api/applications'),
+      ]);
+      setJobs(jobsData.jobs.map(mapLiveJob));
+      setApplications(applicationsData.applications.map(mapLiveApplication));
+    } catch {
+      /* API errors surface via apiClient; dashboard shows empty states. */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLiveData();
+  }, [loadLiveData]);
 
   /* ATS resume: the uploaded file and the generated download live here so they
      survive switching views (the studio itself is unmounted on navigation). */
@@ -190,33 +358,84 @@ export function CandidateDashboard() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
-  const [query, setQuery] = useState('');
-  const searchRef = useRef<HTMLDivElement>(null);
 
-  /* Close the search dropdown on outside click / Escape so an open result list
-     never blocks the page behind it. */
-  useEffect(() => {
-    function onPointerDown(event: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setQuery('');
+  const [keywordFilters, setKeywordFilters] = useState<string[]>([]);
+  const [jobSearch, setJobSearch] = useState('');
+
+  /* Keyword boxes: curated job-market keywords plus anything derived from the
+     live job list; picking one adds it to the search box and filters the grid. */
+  const keywordOptions = useMemo(() => {
+    const DEFAULT_KEYWORDS = [
+      'Remote',
+      'Hybrid',
+      'On-site',
+      'Full-time',
+      'Part-time',
+      'Internship',
+      'Frontend',
+      'Backend',
+      'Full-stack',
+      'React',
+      'Node.js',
+      'TypeScript',
+      'Engineer',
+      'Designer',
+    ];
+    const derived = new Map<string, number>();
+    for (const job of jobs) {
+      const candidates = [
+        job.company,
+        job.location,
+        job.type,
+        job.workMode,
+        ...job.title.split(/\s+/),
+      ];
+      for (const raw of candidates) {
+        const clean = raw.trim();
+        if (clean.length < 3) continue;
+        derived.set(clean, (derived.get(clean) ?? 0) + 1);
       }
     }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') setQuery('');
-    }
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, []);
+    const derivedSorted = [...derived.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([token]) => token);
+    return [...new Set([...derivedSorted, ...DEFAULT_KEYWORDS])].slice(0, 14);
+  }, [jobs]);
+
+  const filteredJobs = useMemo(() => {
+    const text = jobSearch.trim().toLowerCase();
+    return jobs.filter((job) => {
+      const haystack =
+        `${job.title} ${job.company} ${job.location} ${job.type} ${job.workMode} ${job.description}`.toLowerCase();
+      const keywordMatch = keywordFilters.every((keyword) =>
+        haystack.includes(keyword.toLowerCase()),
+      );
+      const textMatch = !text || haystack.includes(text);
+      return keywordMatch && textMatch;
+    });
+  }, [jobs, keywordFilters, jobSearch]);
 
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 4000);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  /* The navbar bell + gear live in the shared layout; they drive this
+     dashboard through custom events so every role keeps its own UI. */
+  useEffect(() => {
+    const onView = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail) setView(detail as CandidateView);
+    };
+    const onNotifications = () => setNotifOpen((value) => !value);
+    window.addEventListener('jobdev:view', onView);
+    window.addEventListener('jobdev:notifications', onNotifications);
+    return () => {
+      window.removeEventListener('jobdev:view', onView);
+      window.removeEventListener('jobdev:notifications', onNotifications);
+    };
+  }, []);
 
   const firstName =
     (user?.name || user?.identifier || 'there').split(/[@\s]/)[0] || 'there';
@@ -235,10 +454,6 @@ export function CandidateDashboard() {
   const upcomingInterviews = INITIAL_INTERVIEWS.filter((interview) => interview.inDays >= 0);
   const activeApplications = applications.filter((application) =>
     ACTIVE_STATUSES.includes(application.status),
-  );
-  const unreadMessages = conversations.reduce(
-    (sum, conversation) => sum + conversation.unread,
-    0,
   );
   const avgMatch = Math.round(
     applications.reduce((sum, application) => sum + application.match, 0) /
@@ -279,31 +494,16 @@ export function CandidateDashboard() {
     },
     {
       label: 'Profile views',
-      value: 163,
+      value: 0,
       delta: `Profile ${completeness}% complete`,
       icon: Eye,
-      hint: 'Open your insights',
-      go: () => setView('insights'),
+      hint: 'Open your profile',
+      go: () => setView('profile'),
     },
   ];
 
   /* Working global search: matches open roles + your applications, click to jump in. */
-  const searchResults = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return null;
-    return {
-      jobs: jobs
-        .filter((job) => job.title.toLowerCase().includes(q))
-        .slice(0, 4),
-      applications: applications
-        .filter(
-          (application) =>
-            application.title.toLowerCase().includes(q) ||
-            application.company.toLowerCase().includes(q),
-        )
-        .slice(0, 4),
-    };
-  }, [query, jobs, applications]);
+
 
   const unread = notifications.filter((notification) => !notification.read).length;
 
@@ -324,38 +524,18 @@ export function CandidateDashboard() {
     );
   }
 
-  function applyToJob(job: JobPosting) {
+  async function applyToJob(job: JobPosting) {
     if (appliedJobIds.includes(job.id)) {
       setToast('You have already applied to this role');
       return;
     }
-    const application: Application = {
-      id: `app-${job.id}-${Date.now()}`,
-      jobId: job.id,
-      title: job.title,
-      company: job.company,
-      companyInitials: job.companyInitials,
-      location: job.location,
-      workMode: job.workMode,
-      type: job.type,
-      salary: job.salary,
-      status: 'Applied',
-      match: job.match,
-      appliedDaysAgo: 0,
-      appliedOn: 'Today',
-      resumeVersion: `v4 — ${profile.resumeUpdatedDaysAgo}d old`,
-      source: 'JobDev search',
-      nextStep: 'Recruiters usually reply within 5–7 days',
-      timeline: [
-        {
-          status: 'Applied',
-          when: 'Today',
-          note: 'Application submitted with your current resume.',
-        },
-      ],
-    };
-    setApplications((current) => [application, ...current]);
-    setToast(`Applied to “${job.title}” — we will track it for you`);
+    try {
+      await apiPost('/api/applications', { jobId: job.id });
+      await loadLiveData();
+      setToast(`Applied to “${job.title}” — we will track it for you`);
+    } catch (error) {
+      setToast((error as Error).message);
+    }
   }
 
   function withdrawApplication(id: string) {
@@ -381,22 +561,6 @@ export function CandidateDashboard() {
     setToast('Application withdrawn — the recruiter has been notified');
   }
 
-  function sendMessage(conversationId: string, text: string) {
-    setConversations((current) =>
-      current.map((conversation) =>
-        conversation.id === conversationId
-          ? {
-              ...conversation,
-              unread: 0,
-              messages: [
-                ...conversation.messages,
-                { from: 'me' as const, text, time: 'now' },
-              ],
-            }
-          : conversation,
-      ),
-    );
-  }
 
   function toggleChecklistItem(key: string) {
     setChecklist((current) =>
@@ -434,7 +598,8 @@ export function CandidateDashboard() {
     : null;
 
   return (
-    <div className="flex flex-col gap-4 lg:h-[calc(100vh-8rem)] lg:flex-row lg:gap-6">
+    <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+      <CandidateProfileGate />
       <CandidateSidebar
         active={view}
         onSelect={setView}
@@ -442,7 +607,6 @@ export function CandidateDashboard() {
           applications: activeApplications.length,
           interviews: upcomingInterviews.length,
           saved: savedIds.length,
-          messages: unreadMessages,
         }}
         strengthPercent={completeness}
         missingSignals={missingSignals}
@@ -452,7 +616,7 @@ export function CandidateDashboard() {
         }}
       />
 
-      <main className="min-w-0 flex-1 space-y-4 overflow-y-auto pr-1 scrollbar-slim">
+      <main className="min-w-0 flex-1 space-y-4">
         {/* Greeting + global actions */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="animate-fade-in-up">
@@ -465,92 +629,11 @@ export function CandidateDashboard() {
           </div>
 
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
-            <div className="relative min-w-0 flex-1 sm:flex-none" ref={searchRef}>
-              <Compass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search jobs, companies…"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="w-full pl-9 sm:w-56"
-              />
-              {searchResults && (
-                <div className="animate-pop-in absolute left-0 right-0 top-full z-30 mt-2 max-h-80 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl scrollbar-slim">
-                  {searchResults.jobs.length === 0 &&
-                    searchResults.applications.length === 0 && (
-                      <p className="p-3 text-center text-xs text-muted-foreground">
-                        No matches for “{query}”.
-                      </p>
-                    )}
-                  {searchResults.jobs.length > 0 && (
-                    <p className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                      Open roles
-                    </p>
-                  )}
-                  {searchResults.jobs.map((job) => (
-                    <button
-                      key={job.id}
-                      type="button"
-                      onClick={() => {
-                        setQuery('');
-                        setSelectedJob(job);
-                      }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-primary-light"
-                    >
-                      <Briefcase className="h-4 w-4 shrink-0 text-primary" />
-                      <span className="truncate font-medium">{job.title}</span>
-                      <span className="ml-auto shrink-0 text-xs font-semibold text-muted-foreground">
-                        {job.match}% match
-                      </span>
-                    </button>
-                  ))}
-                  {searchResults.applications.length > 0 && (
-                    <p className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                      My applications
-                    </p>
-                  )}
-                  {searchResults.applications.map((application) => (
-                    <button
-                      key={application.id}
-                      type="button"
-                      onClick={() => {
-                        setQuery('');
-                        setView('applications');
-                        setSelectedApplication(application);
-                      }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-primary-light"
-                    >
-                      <Send className="h-4 w-4 shrink-0 text-primary" />
-                      <span className="truncate font-medium">
-                        {application.title} · {application.company}
-                      </span>
-                      <span className="ml-auto shrink-0">
-                        <StatusChip status={application.status} />
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Notifications */}
-            <div className="relative">
-              <button
-                type="button"
-                aria-label={`Notifications (${unread} unread)`}
-                onClick={() => setNotifOpen((value) => !value)}
-                className="relative rounded-xl border border-border bg-card p-2.5 text-muted-foreground transition-all hover:scale-105 hover:text-primary-dark"
-              >
-                <Bell className="h-4 w-4" />
-                {unread > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 animate-pulse-dot items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
-                    {unread}
-                  </span>
-                )}
-              </button>
+            <div>
               {notifOpen && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setNotifOpen(false)} />
-                  <div className="animate-pop-in absolute right-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+                  <div className="animate-pop-in fixed right-4 top-16 z-50 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl">
                     <div className="flex items-center justify-between border-b border-border bg-muted/50 px-4 py-3">
                       <p className="text-sm font-bold">Notifications</p>
                       <button
@@ -621,6 +704,14 @@ export function CandidateDashboard() {
 
         {view === 'overview' && (
           <>
+            <div className="animate-fade-in-up overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+              <img
+                src="/jobdev-poster.png"
+                alt="JobDev - find work that fits, apply in one click"
+                className="h-auto w-full object-cover"
+              />
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {stats.map((stat, index) => (
                 <StatCard
@@ -677,113 +768,6 @@ export function CandidateDashboard() {
                   </Button>
                 </div>
               )}
-            </SectionCard>
-
-            <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
-              <div
-                className="animate-fade-in-up rounded-2xl border border-border bg-card p-5 shadow-sm"
-                style={{ animationDelay: '200ms' }}
-              >
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold">Your activity</h3>
-                  <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-primary" />
-                      Applications
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-info" />
-                      Profile views
-                    </span>
-                  </div>
-                </div>
-                <ApplicationsTrend />
-                <div className="mt-3 border-t border-border pt-3">
-                  <StagePills counts={counts} onPick={() => setView('applications')} />
-                </div>
-              </div>
-
-              <div
-                className="animate-fade-in-up rounded-2xl border border-border bg-card p-5 shadow-sm"
-                style={{ animationDelay: '280ms' }}
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold">Recent activity</h3>
-                  <button
-                    type="button"
-                    onClick={() => setView('insights')}
-                    className="text-xs font-semibold text-primary hover:text-primary-hover"
-                  >
-                    View insights
-                  </button>
-                </div>
-                <div className="max-h-80 overflow-y-auto pr-1 scrollbar-slim">
-                  <ActivityFeed items={INITIAL_ACTIVITY.slice(0, 5)} />
-                </div>
-              </div>
-            </div>
-
-            {/* Next actions */}
-            <SectionCard
-              title="Next best actions"
-              subtitle="The three things most likely to move your search forward"
-              delay={340}
-            >
-              <div className="grid gap-3 sm:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={() => setView('interviews')}
-                  className="group flex items-start gap-3 rounded-xl border border-border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">
-                    <Video className="h-4 w-4" />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-semibold">
-                      Prep for {upcomingInterviews[0]?.company ?? 'your next interview'}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {upcomingInterviews[0]
-                        ? `${upcomingInterviews[0].date} at ${upcomingInterviews[0].time}`
-                        : 'No interviews booked yet'}
-                    </span>
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setView('profile')}
-                  className="group flex items-start gap-3 rounded-xl border border-border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-light text-primary-dark">
-                    <Sparkles className="h-4 w-4" />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-semibold">
-                      Lift your profile to 100%
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {missingSignals} signal{missingSignals === 1 ? '' : 's'} left
-                    </span>
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setView('insights')}
-                  className="group flex items-start gap-3 rounded-xl border border-border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info">
-                    <Gauge className="h-4 w-4" />
-                  </span>
-                  <span>
-                    <span className="block text-sm font-semibold">Close your Docker gap</span>
-                    <span className="block text-xs text-muted-foreground">
-                      Asked for in 6 of your matched roles
-                    </span>
-                  </span>
-                </button>
-              </div>
             </SectionCard>
 
             {/* Recommendations */}
@@ -908,29 +892,58 @@ export function CandidateDashboard() {
         )}
 
         {view === 'jobs' && (
-          <JobsView
-            jobs={jobs}
-            savedIds={savedIds}
-            appliedJobIds={appliedJobIds}
-            onOpenJob={setSelectedJob}
-            onToggleSave={toggleSave}
-            onApply={applyToJob}
-          />
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border bg-card p-3">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-input bg-background px-2 py-1.5">
+                {keywordFilters.map((keyword) => (
+                  <button
+                    key={keyword}
+                    type="button"
+                    onClick={() =>
+                      setKeywordFilters((current) =>
+                        current.filter((item) => item !== keyword),
+                      )
+                    }
+                    className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground transition-transform active:scale-95"
+                  >
+                    {keyword}
+                    <X className="h-3 w-3" />
+                  </button>
+                ))}
+                <input
+                  value={jobSearch}
+                  onChange={(event) => setJobSearch(event.target.value)}
+                  placeholder="Search jobs by keyword…"
+                  className="h-7 min-w-[140px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {keywordOptions
+                  .filter((keyword) => !keywordFilters.includes(keyword))
+                  .map((keyword) => (
+                    <button
+                      key={keyword}
+                      type="button"
+                      onClick={() => setKeywordFilters((current) => [...current, keyword])}
+                      className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary-dark"
+                    >
+                      + {keyword}
+                    </button>
+                  ))}
+              </div>
+            </div>
+            <JobsView
+              jobs={filteredJobs}
+              savedIds={savedIds}
+              appliedJobIds={appliedJobIds}
+              onOpenJob={setSelectedJob}
+              onToggleSave={toggleSave}
+              onApply={applyToJob}
+            />
+          </div>
         )}
 
-        {view === 'messages' && (
-          <MessagesView conversations={conversations} onSend={sendMessage} />
-        )}
 
-        {view === 'insights' && (
-          <InsightsView
-            counts={counts}
-            profilePercent={completeness}
-            responseRate={80}
-            avgReplyDays={2}
-            avgMatch={avgMatch}
-          />
-        )}
 
         {view === 'profile' && (
           <ProfileView
@@ -943,10 +956,33 @@ export function CandidateDashboard() {
             atsFileName={atsResult?.fileName ?? null}
             onOpenResume={() => setView('resume')}
             onDownloadAts={downloadAtsResume}
+            onSaveProfile={(fields) => setProfile((current) => ({ ...current, ...fields }))}
+            onAddSkill={(skill) =>
+              setProfile((current) =>
+                current.skills.includes(skill)
+                  ? current
+                  : { ...current, skills: [...current.skills, skill] },
+              )
+            }
+            onRemoveSkill={(skill) =>
+              setProfile((current) => ({
+                ...current,
+                skills: current.skills.filter((item) => item !== skill),
+              }))
+            }
+            onAddExperience={(entry) =>
+              setProfile((current) => ({
+                ...current,
+                experience: [
+                  ...current.experience,
+                  { ...entry, highlights: [] },
+                ],
+              }))
+            }
           />
         )}
 
-        {view === 'settings' && <SettingsView />}
+        {view === 'settings' && <SettingsView profile={profile} />}
         {view === 'help' && <HelpView />}
       </main>
 

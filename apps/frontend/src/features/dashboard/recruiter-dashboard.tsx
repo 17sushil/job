@@ -14,6 +14,8 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { toast } from '@/components/ui/use-toast';
+import { apiGet, apiPatch, apiPost, type JobRow } from '@/features/dashboard/shared';
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
@@ -39,10 +41,36 @@ import {
   HelpView,
   JobDrawer,
   JobsView,
-  MessagesView,
   SettingsView,
   StatusChip,
 } from './recruiter/views';
+
+const daysSince = (iso: string) =>
+  Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+
+/* Map an API job row into the recruiter workspace Job shape. */
+function mapApiJob(row: JobRow): Job {
+  const metadata = row.metadata ?? {};
+  const str = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null);
+  const type = (str(metadata.employmentType) ?? 'Full-time') as Job['type'];
+  return {
+    id: row.id,
+    title: row.title,
+    department: str(metadata.department) ?? '',
+    location: row.location ?? 'Remote',
+    type,
+    salary: str(metadata.salary) ?? 'Negotiable',
+    status: row.status === 'paused' ? 'Paused' : row.status === 'closed' ? 'Closed' : 'Active',
+    applicants: 0,
+    views: 0,
+    postedDaysAgo: daysSince(row.createdAt),
+    postedOn: new Date(row.createdAt).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }),
+  };
+}
 
 function StatCard({
   label,
@@ -113,11 +141,20 @@ export function RecruiterDashboard() {
   const [jobs, setJobs] = useState<Job[]>(INITIAL_JOBS);
   const [applicants, setApplicants] =
     useState<Applicant[]>(INITIAL_APPLICANTS);
+
+  /* Jobs are real rows: load what this recruiter has posted. */
+  useEffect(() => {
+    apiGet<{ jobs: JobRow[] }>('/api/jobs/mine')
+      .then((data) => setJobs(data.jobs.map(mapApiJob)))
+      .catch((error: Error) =>
+        toast({ title: error.message, variant: 'destructive' }),
+      );
+  }, []);
   /* Notifications persist in localStorage so read state survives reloads. */
   const [notifications, setNotifications] = useState<Notification[]>(() => {
     if (typeof window === 'undefined') return INITIAL_NOTIFICATIONS;
     try {
-      const raw = window.localStorage.getItem('jobdev-notifications');
+      const raw = window.localStorage.getItem('jobdev-recruiter-notifications');
       if (raw) return JSON.parse(raw) as Notification[];
     } catch {
       /* fall back to the demo set */
@@ -128,7 +165,7 @@ export function RecruiterDashboard() {
   useEffect(() => {
     try {
       window.localStorage.setItem(
-        'jobdev-notifications',
+        'jobdev-recruiter-notifications',
         JSON.stringify(notifications),
       );
     } catch {
@@ -136,6 +173,22 @@ export function RecruiterDashboard() {
     }
   }, [notifications]);
   const [notifOpen, setNotifOpen] = useState(false);
+
+  /* The navbar bell + gear live in the shared layout; they drive this
+     dashboard through custom events. */
+  useEffect(() => {
+    const onView = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail) setView(detail as RecruiterView);
+    };
+    const onNotifications = () => setNotifOpen((value) => !value);
+    window.addEventListener('jobdev:view', onView);
+    window.addEventListener('jobdev:notifications', onNotifications);
+    return () => {
+      window.removeEventListener('jobdev:view', onView);
+      window.removeEventListener('jobdev:notifications', onNotifications);
+    };
+  }, []);
   const [jobFilter, setJobFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<ApplicantStatus | 'All'>(
     'All',
@@ -189,7 +242,7 @@ export function RecruiterDashboard() {
       {
         label: 'Active jobs',
         value: jobs.filter((job) => job.status === 'Active').length,
-        delta: '+2 this month',
+        delta: `${jobs.length} total posted`,
         icon: Briefcase,
         hint: 'View your active jobs',
         go: () => setView('jobs'),
@@ -197,7 +250,7 @@ export function RecruiterDashboard() {
       {
         label: 'Total applicants',
         value: applicants.length,
-        delta: '+18% vs last week',
+        delta: `${applicants.filter((a) => a.status === 'New').length} new in pipeline`,
         icon: Users,
         hint: 'View all applicants',
         go: () => {
@@ -208,7 +261,12 @@ export function RecruiterDashboard() {
       {
         label: 'Interviews scheduled',
         value: applicants.filter((a) => a.status === 'Interview').length,
-        delta: 'Next: Thu 2:00 PM',
+        delta: (() => {
+          const next = applicants.find(
+            (a) => a.status === 'Interview' && a.scheduledDate,
+          );
+          return next ? `Next: ${next.scheduledDate}` : 'None scheduled yet';
+        })(),
         icon: CalendarCheck,
         hint: 'View applicants in interview',
         go: () => {
@@ -217,9 +275,9 @@ export function RecruiterDashboard() {
         },
       },
       {
-        label: 'Profile views',
+        label: 'Job views',
         value: jobs.reduce((sum, job) => sum + job.views, 0),
-        delta: '+9% this week',
+        delta: `Across ${jobs.length} job post${jobs.length === 1 ? '' : 's'}`,
         icon: Eye,
         hint: 'Open analytics',
         go: () => setView('analytics'),
@@ -242,11 +300,39 @@ export function RecruiterDashboard() {
 
   const unread = notifications.filter((n) => !n.read).length;
 
-  function addJob(job: Job) {
-    setJobs((current) => [job, ...current]);
+  async function addJob(job: Job) {
+    try {
+      const data = await apiPost<{ job: JobRow }>('/api/jobs', {
+        title: job.title,
+        location: job.location,
+        description: job.description ?? null,
+        department: job.department || null,
+        employmentType: job.type,
+        salary: job.salary || null,
+      });
+      /* Saved job rows power the candidate side too - their keyword chips
+         derive from these posts automatically. */
+      setJobs((current) => [mapApiJob(data.job), ...current]);
+    } catch (error) {
+      toast({
+        title: error instanceof Error ? error.message : 'Could not post the job',
+        variant: 'destructive',
+      });
+    }
   }
 
-  function setJobStatus(id: string, status: JobStatus) {
+  async function setJobStatus(id: string, status: JobStatus) {
+    const apiStatus =
+      status === 'Active' ? 'open' : status === 'Paused' ? 'paused' : 'closed';
+    try {
+      await apiPatch(`/api/jobs/${id}/status`, { status: apiStatus });
+    } catch (error) {
+      toast({
+        title: error instanceof Error ? error.message : 'Could not update the job',
+        variant: 'destructive',
+      });
+      return;
+    }
     const changedOn =
       status === 'Active'
         ? undefined
@@ -302,11 +388,10 @@ export function RecruiterDashboard() {
 
   const badges: Partial<Record<RecruiterView, number>> = {
     applicants: applicants.filter((a) => a.status === 'New').length,
-    messages: 3,
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col lg:h-[calc(100vh-6rem)] lg:flex-row lg:items-stretch lg:overflow-hidden">
+    <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
       <Sidebar
         active={view}
         onSelect={setView}
@@ -314,7 +399,7 @@ export function RecruiterDashboard() {
         onLogout={logout}
       />
 
-      <main className="min-w-0 flex-1 space-y-4 p-4 sm:p-6 lg:overflow-y-auto lg:space-y-4 scrollbar-slim">
+      <main className="min-w-0 flex-1 space-y-4">
         {/* Top bar */}
         {/* z-40 only while a dropdown is open so results float above cards;
             otherwise the bar stays low and scrolls under the sticky nav. */}
@@ -324,7 +409,7 @@ export function RecruiterDashboard() {
             notifOpen || query.trim() ? 'z-40' : 'z-0',
           )}
         >
-          <div className="min-w-0">
+          <div className="min-w-0 w-full sm:w-auto">
             <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
               {greeting},{' '}
               <span className="text-primary">{firstName}</span>
@@ -400,28 +485,15 @@ export function RecruiterDashboard() {
               )}
             </div>
 
-            {/* Notifications */}
-            <div className="relative">
-              <button
-                type="button"
-                aria-label={`Notifications (${unread} unread)`}
-                onClick={() => setNotifOpen((value) => !value)}
-                className="relative rounded-xl border border-border bg-card p-2.5 text-muted-foreground transition-all hover:scale-105 hover:text-primary-dark"
-              >
-                <Bell className="h-4 w-4" />
-                {unread > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground animate-pulse-dot">
-                    {unread}
-                  </span>
-                )}
-              </button>
+            {/* Notifications dropdown, opened from the navbar bell */}
+            <div>
               {notifOpen && (
                 <>
                   <div
                     className="fixed inset-0 z-30"
                     onClick={() => setNotifOpen(false)}
                   />
-                  <div className="animate-pop-in absolute right-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+                  <div className="animate-pop-in fixed right-4 top-16 z-50 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-xl">
                     <div className="flex items-center justify-between border-b border-border bg-muted/50 px-4 py-3">
                       <p className="text-sm font-bold">Notifications</p>
                       <button
@@ -438,6 +510,11 @@ export function RecruiterDashboard() {
                       </button>
                     </div>
                     <ul className="max-h-80 overflow-y-auto p-2 scrollbar-slim">
+                      {notifications.length === 0 && (
+                        <li className="p-4 text-center text-xs text-muted-foreground">
+                          No notifications yet.
+                        </li>
+                      )}
                       {notifications.map((notification) => (
                         <li key={notification.id}>
                           <button
@@ -506,6 +583,14 @@ export function RecruiterDashboard() {
 
         {view === 'overview' && (
           <>
+            <div className="animate-fade-in-up overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+              <img
+                src="/jobdev-poster.png"
+                alt="JobDev - find work that fits, apply in one click"
+                className="h-auto w-full object-cover"
+              />
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {stats.map((stat, index) => (
                 <StatCard
@@ -556,6 +641,11 @@ export function RecruiterDashboard() {
                     View all
                   </button>
                 </div>
+                {applicants.length === 0 && (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    No applicants yet - they appear here as soon as someone applies.
+                  </p>
+                )}
                 <ul className="max-h-80 space-y-3 overflow-y-auto pr-1 scrollbar-slim lg:max-h-64 xl:max-h-80">
                   {applicants.slice(0, 5).map((applicant, index) => (
                     <li
@@ -599,6 +689,11 @@ export function RecruiterDashboard() {
                   Manage jobs
                 </button>
               </div>
+              {jobs.filter((job) => job.status !== 'Closed').length === 0 && (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No live job posts yet - use “Post a job” to publish your first role.
+                </p>
+              )}
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {jobs
                   .filter((job) => job.status !== 'Closed')
@@ -659,7 +754,6 @@ export function RecruiterDashboard() {
           />
         )}
 
-        {view === 'messages' && <MessagesView />}
         {view === 'analytics' && <AnalyticsView />}
         {view === 'company' && <CompanyView />}
         {view === 'settings' && <SettingsView />}

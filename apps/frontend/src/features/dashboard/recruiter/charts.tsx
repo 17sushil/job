@@ -21,8 +21,22 @@ function toPath(points: ReadonlyArray<readonly [number, number]>) {
     .join(' ');
 }
 
+
+function ChartEmpty({ label }: { label: string }) {
+  return (
+    <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 px-6 text-center">
+      <p className="text-sm text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
 /** Animated two-series line chart (applications vs interviews). */
 export function ApplicationsChart() {
+  if (WEEKLY.length === 0) {
+    return (
+      <ChartEmpty label="Application trends appear here once your job posts start receiving applications." />
+    );
+  }
   const apps = toPoints(WEEKLY.map((d) => d.applications));
   const interviews = toPoints(WEEKLY.map((d) => d.interviews));
   const areaPath = `${toPath(apps)} L${apps[apps.length - 1][0]},${H - PAD} L${apps[0][0]},${H - PAD} Z`;
@@ -118,6 +132,11 @@ export function ApplicationsChart() {
 
 /** Weekly bar chart that grows from the baseline. */
 export function WeeklyBars() {
+  if (WEEKLY.length === 0) {
+    return (
+      <ChartEmpty label="Weekly application volumes appear here once applicants start coming in." />
+    );
+  }
   const max = Math.max(...WEEKLY.map((d) => d.applications)) * 1.15;
   const slot = (W - PAD * 2) / WEEKLY.length;
 
@@ -164,6 +183,12 @@ export function SourcesDonut({
 }: {
   slices: Array<{ label: string; value: number; colorClass: string }>;
 }) {
+  if (slices.length === 0) {
+    return (
+      <ChartEmpty label="Source tracking starts once your first applicants arrive." />
+    );
+  }
+
   const colorOf: Record<string, string> = {
     'bg-primary': 'hsl(var(--primary))',
     'bg-info': 'hsl(var(--info))',
@@ -189,9 +214,9 @@ export function SourcesDonut({
         aria-label="Applicant sources breakdown"
       >
         <div className="absolute inset-4 flex flex-col items-center justify-center rounded-full bg-card">
-          <span className="text-xl font-bold">187</span>
+          <span className="text-xl font-bold">{slices.reduce((sum, slice) => sum + slice.value, 0)}%</span>
           <span className="text-[10px] font-medium text-muted-foreground">
-            applicants
+            tracked
           </span>
         </div>
       </div>

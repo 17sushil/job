@@ -33,13 +33,18 @@ import {
   TrendingUp,
   Upload,
   Video,
+  X,
   Zap,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from '@/components/ui/use-toast';
+import { changePasswordRequest, readApiError } from '@/features/auth/api';
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/auth';
 
 import {
   ACTIVITY_STATUS,
@@ -1693,9 +1698,10 @@ export function InsightsView({
   avgReplyDays: number;
   avgMatch: number;
 }) {
-  const views = useCountUp(163);
-  const applications = useCountUp(16);
-  const interviews = useCountUp(4);
+  const totalApplications = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  const views = useCountUp(0);
+  const applications = useCountUp(totalApplications);
+  const interviews = useCountUp((counts.Interview ?? 0) + (counts.Offer ?? 0));
 
   const buckets = [
     { label: '80–100', value: 4, tone: 'hsl(var(--primary))' },
@@ -1808,32 +1814,7 @@ export function InsightsView({
         </SectionCard>
       </div>
 
-      <SectionCard title="What to do next" delay={480}>
-        <ul className="space-y-2.5 text-sm">
-          <li className="flex gap-2">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
-            <span>
-              <strong className="font-semibold">Docker</strong> appears in 6 of
-              your matched roles and you have not listed it - a weekend project
-              would close that gap.
-            </span>
-          </li>
-          <li className="flex gap-2">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-            <span>
-              You reply to 80% of recruiter messages within a day. Fast replies
-              correlate with more offers - keep it up.
-            </span>
-          </li>
-          <li className="flex gap-2">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
-            <span>
-              Your offer from <strong className="font-semibold">Sajha Health</strong>{' '}
-              expires in 5 days. Decide before the deadline - recruiters rarely extend it.
-            </span>
-          </li>
-        </ul>
-      </SectionCard>
+      
     </div>
   );
 }
@@ -1852,6 +1833,10 @@ export function ProfileView({
   atsFileName = null,
   onOpenResume,
   onDownloadAts,
+  onSaveProfile,
+  onAddSkill,
+  onRemoveSkill,
+  onAddExperience,
 }: {
   profile: CandidateProfile;
   checklist: ChecklistItem[];
@@ -1863,9 +1848,22 @@ export function ProfileView({
   atsFileName?: string | null;
   onOpenResume?: () => void;
   onDownloadAts?: () => void;
+  onSaveProfile?: (fields: {
+    headline: string;
+    about: string;
+    location: string;
+    phone: string;
+    expectedSalary: string;
+    noticePeriod: string;
+  }) => void;
+  onAddSkill?: (skill: string) => void;
+  onRemoveSkill?: (skill: string) => void;
+  onAddExperience?: (entry: { role: string; company: string; period: string }) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [skillDraft, setSkillDraft] = useState('');
+  const [expDraft, setExpDraft] = useState({ role: '', company: '', period: '' });
   const [form, setForm] = useState({
     headline: profile.headline,
     about: profile.about,
@@ -1884,7 +1882,25 @@ export function ProfileView({
     event.preventDefault();
     setEditing(false);
     setSaved(true);
+    onSaveProfile?.(form);
     window.setTimeout(() => setSaved(false), 2600);
+  }
+
+  function addSkill() {
+    const skill = skillDraft.trim();
+    if (!skill) return;
+    onAddSkill?.(skill);
+    setSkillDraft('');
+  }
+
+  function addExperience() {
+    if (!expDraft.role.trim() || !expDraft.company.trim()) return;
+    onAddExperience?.({
+      role: expDraft.role.trim(),
+      company: expDraft.company.trim(),
+      period: expDraft.period.trim() || '—',
+    });
+    setExpDraft({ role: '', company: '', period: '' });
   }
 
   return (
@@ -2025,12 +2041,16 @@ export function ProfileView({
                 <p className="flex items-center gap-2 text-muted-foreground">
                   <Phone className="h-4 w-4 text-primary" /> {profile.phone}
                 </p>
-                <p className="flex items-center gap-2 text-muted-foreground">
-                  <Target className="h-4 w-4 text-primary" /> Wants {profile.expectedSalary}
-                </p>
-                <p className="flex items-center gap-2 text-muted-foreground">
-                  <Clock className="h-4 w-4 text-primary" /> {profile.noticePeriod} notice
-                </p>
+                {profile.expectedSalary ? (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <Target className="h-4 w-4 text-primary" /> Wants {profile.expectedSalary}
+                  </p>
+                ) : null}
+                {profile.noticePeriod ? (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <Clock className="h-4 w-4 text-primary" /> {profile.noticePeriod} notice
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </SectionCard>
@@ -2040,20 +2060,80 @@ export function ProfileView({
               {profile.skills.map((skill) => (
                 <span
                   key={skill}
-                  className="rounded-full bg-primary-light px-3 py-1 text-xs font-semibold text-primary-dark"
+                  className="flex items-center gap-1 rounded-full bg-primary-light py-1 pl-3 pr-1.5 text-xs font-semibold text-primary-dark"
                 >
                   {skill}
+                  <button
+                    type="button"
+                    onClick={() => onRemoveSkill?.(skill)}
+                    aria-label={`Remove ${skill}`}
+                    className="rounded-full p-0.5 transition-colors hover:bg-primary/20"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 </span>
               ))}
-              {missing.some((item) => item.key === 'references') ? (
-                <span className="rounded-full border border-dashed border-border px-3 py-1 text-xs font-semibold text-muted-foreground">
-                  + add a skill
-                </span>
-              ) : null}
+              <span className="flex items-center gap-1">
+                <Input
+                  value={skillDraft}
+                  onChange={(event) => setSkillDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      addSkill();
+                    }
+                  }}
+                  placeholder="+ add a skill"
+                  className="h-7 w-32 rounded-full border-dashed px-3 text-xs"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full px-2.5 text-xs"
+                  onClick={addSkill}
+                  disabled={!skillDraft.trim()}
+                >
+                  Add
+                </Button>
+              </span>
             </div>
           </SectionCard>
 
           <SectionCard title="Experience" subtitle="What recruiters read first" delay={180}>
+            {profile.experience.length === 0 ? (
+              <div className="mb-4 grid gap-2 sm:grid-cols-3">
+                <Input
+                  value={expDraft.role}
+                  onChange={(event) => setExpDraft({ ...expDraft, role: event.target.value })}
+                  placeholder="Role"
+                  className="h-8 text-xs"
+                />
+                <Input
+                  value={expDraft.company}
+                  onChange={(event) => setExpDraft({ ...expDraft, company: event.target.value })}
+                  placeholder="Company"
+                  className="h-8 text-xs"
+                />
+                <span className="flex gap-2">
+                  <Input
+                    value={expDraft.period}
+                    onChange={(event) => setExpDraft({ ...expDraft, period: event.target.value })}
+                    placeholder="Period (e.g. 2024 - now)"
+                    className="h-8 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 shrink-0"
+                    onClick={addExperience}
+                    disabled={!expDraft.role.trim() || !expDraft.company.trim()}
+                  >
+                    Add
+                  </Button>
+                </span>
+              </div>
+            ) : null}
             <ol className="space-y-5">
               {profile.experience.map((role) => (
                 <li key={`${role.company}-${role.role}`} className="border-l-2 border-primary/30 pl-4">
@@ -2114,6 +2194,44 @@ export function ProfileView({
               </div>
             </div>
           </SectionCard>
+
+          <SectionCard title="Resume" delay={160}>
+            <div className="flex items-center gap-3 rounded-xl border border-border p-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light">
+                <FileText className="h-5 w-5 text-primary-dark" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">
+                  {atsReady && atsFileName ? atsFileName : profile.resumeFileName || 'No resume yet'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {atsReady
+                    ? 'ATS-friendly version ready to download'
+                    : profile.resumeFileName
+                      ? 'Stored with your profile · not ATS-checked yet'
+                      : 'Upload a PDF or DOCX to complete your profile'}
+                </p>
+              </div>
+              {atsReady ? (
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+                  <FileCheck2 className="h-3.5 w-3.5" />
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1" onClick={onOpenResume}>
+                <Upload className="h-3.5 w-3.5" />
+                {atsReady ? 'Replace file' : 'Upload resume'}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onDownloadAts}>
+                <Download className="h-3.5 w-3.5" />
+                {atsReady ? 'Download PDF' : 'Get ATS PDF'}
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Upload a PDF or DOCX and download the ATS-friendly version as PDF.
+            </p>
+          </SectionCard>
         </div>
 
         {/* Side column */}
@@ -2152,77 +2270,6 @@ export function ProfileView({
                 </p>
               </div>
             </div>
-
-            <ul className="mt-4 space-y-2">
-              {checklist.map((item) => (
-                <li key={item.key}>
-                  <button
-                    type="button"
-                    onClick={() => onToggleChecklist(item.key)}
-                    title={item.hint}
-                    className="flex w-full items-start gap-2.5 rounded-lg p-1 text-left transition-colors hover:bg-muted/60"
-                  >
-                    <span
-                      className={cn(
-                        'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-                        item.done
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border bg-card',
-                      )}
-                    >
-                      {item.done ? <Check className="h-3 w-3" /> : null}
-                    </span>
-                    <span className="text-sm">
-                      <span className={item.done ? 'text-muted-foreground' : 'font-medium'}>
-                        {item.label}
-                      </span>
-                      {!item.done ? (
-                        <span className="block text-xs text-muted-foreground">{item.hint}</span>
-                      ) : null}
-                    </span>
-                    <span className="ml-auto text-[10px] font-bold text-muted-foreground">
-                      +{item.weight}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </SectionCard>
-
-          <SectionCard title="Resume" delay={160}>
-            <div className="flex items-center gap-3 rounded-xl border border-border p-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light">
-                <FileText className="h-5 w-5 text-primary-dark" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">
-                  {atsReady && atsFileName ? atsFileName : profile.resumeFileName}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {atsReady
-                    ? 'ATS-friendly version ready to download'
-                    : `Uploaded ${profile.resumeUpdatedDaysAgo}d ago · not ATS-checked yet`}
-                </p>
-              </div>
-              {atsReady ? (
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
-                  <FileCheck2 className="h-3.5 w-3.5" />
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1" onClick={onOpenResume}>
-                <Upload className="h-3.5 w-3.5" />
-                {atsReady ? 'Replace file' : 'Upload resume'}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={onDownloadAts}>
-                <Download className="h-3.5 w-3.5" />
-                {atsReady ? 'Download PDF' : 'Get ATS PDF'}
-              </Button>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Upload a PDF, DOCX or DOC and download the ATS-friendly version as PDF.
-            </p>
           </SectionCard>
 
           <SectionCard title="Visibility" delay={220}>
@@ -2233,11 +2280,11 @@ export function ProfileView({
               </li>
               <li className="flex items-center justify-between">
                 <span className="text-muted-foreground">Profile views (30d)</span>
-                <span className="font-semibold">41</span>
+                <span className="font-semibold">0</span>
               </li>
               <li className="flex items-center justify-between">
                 <span className="text-muted-foreground">Saved by recruiters</span>
-                <span className="font-semibold">7</span>
+                <span className="font-semibold">0</span>
               </li>
             </ul>
             <Button variant="outline" className="mt-4 w-full" onClick={onOpenSettings}>
@@ -2257,7 +2304,8 @@ export function ProfileView({
 /*                                 Settings                                   */
 /* -------------------------------------------------------------------------- */
 
-export function SettingsView() {
+export function SettingsView({ profile }: { profile?: CandidateProfile }) {
+  const user = useAuthStore((state) => state.user);
   const [prefs, setPrefs] = useState({
     alerts: true,
     weekly: true,
@@ -2265,6 +2313,30 @@ export function SettingsView() {
     visible: true,
     hideSalary: false,
   });
+  const [pwOpen, setPwOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [changingPw, setChangingPw] = useState(false);
+
+  async function handleChangePassword(event: React.FormEvent) {
+    event.preventDefault();
+    setChangingPw(true);
+    try {
+      const res = await changePasswordRequest(currentPassword, newPassword);
+      if (!res.ok) {
+        toast({ title: await readApiError(res), variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Password changed', variant: 'success' });
+      setCurrentPassword('');
+      setNewPassword('');
+      setPwOpen(false);
+    } catch {
+      toast({ title: 'Network error. Please try again.', variant: 'destructive' });
+    } finally {
+      setChangingPw(false);
+    }
+  }
 
   const rows: Array<{
     key: keyof typeof prefs;
@@ -2342,51 +2414,80 @@ export function SettingsView() {
         <SectionCard title="Job preferences" delay={140}>
           <dl className="space-y-3 text-sm">
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Roles</dt>
-              <dd className="font-semibold">Frontend · Full-stack</dd>
+              <dt className="text-muted-foreground">Headline</dt>
+              <dd className="font-semibold">{profile?.headline || '—'}</dd>
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">Working style</dt>
-              <dd className="font-semibold">Remote · Hybrid</dd>
+              <dd className="font-semibold">
+                {profile?.workModes.length ? profile.workModes.join(' · ') : '—'}
+              </dd>
             </div>
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Locations</dt>
-              <dd className="font-semibold">Kathmandu · Remote (Asia)</dd>
+              <dt className="text-muted-foreground">Location</dt>
+              <dd className="font-semibold">{profile?.location || '—'}</dd>
             </div>
             <div className="flex items-center justify-between">
-              <dt className="text-muted-foreground">Minimum salary</dt>
-              <dd className="font-semibold">Rs 110k / month</dd>
+              <dt className="text-muted-foreground">Expected salary</dt>
+              <dd className="font-semibold">{profile?.expectedSalary || '—'}</dd>
             </div>
           </dl>
-          <Button variant="outline" className="mt-4 w-full">
-            <Zap className="h-4 w-4" />
-            Refine preferences
-          </Button>
+          <p className="mt-4 text-xs text-muted-foreground">
+            These come from your profile - update them under My profile.
+          </p>
         </SectionCard>
 
         <SectionCard title="Account" delay={200}>
           <ul className="space-y-3 text-sm">
             <li className="flex items-center justify-between">
               <span className="text-muted-foreground">Email</span>
-              <span className="font-semibold">bibek.thapa@outlook.com</span>
+              <span className="font-semibold">{user?.email ?? '—'}</span>
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-muted-foreground">Password</span>
-              <span className="font-semibold">Changed 3 months ago</span>
-            </li>
-            <li className="flex items-center justify-between">
-              <span className="text-muted-foreground">Two-factor</span>
-              <span className="font-semibold text-warning">Off</span>
+              <span className="text-muted-foreground">Phone</span>
+              <span className="font-semibold">{user?.phone ?? '—'}</span>
             </li>
           </ul>
           <div className="mt-4 space-y-2">
-            <Button variant="outline" className="w-full">
-              Change password
-            </Button>
-            <Button variant="outline" className="w-full">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setPwOpen((value) => !value)}
+            >
               <Shield className="h-4 w-4" />
-              Enable two-factor
+              {pwOpen ? 'Cancel' : 'Change password'}
             </Button>
+            {pwOpen ? (
+              <form onSubmit={handleChangePassword} className="space-y-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="pw-current">Current password</Label>
+                  <Input
+                    id="pw-current"
+                    type="password"
+                    value={currentPassword}
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                    autoComplete="current-password"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="pw-new">New password (min 8 characters)</Label>
+                  <Input
+                    id="pw-new"
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    autoComplete="new-password"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={changingPw || !currentPassword || newPassword.length < 8}
+                >
+                  {changingPw ? 'Saving…' : 'Save new password'}
+                </Button>
+              </form>
+            ) : null}
           </div>
         </SectionCard>
       </div>

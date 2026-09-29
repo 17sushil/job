@@ -1,44 +1,48 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { Logo } from '@/components/logo';
-import { RegisterForm } from '@/features/auth/components/register-form';
-import type { UserRole } from '@/features/auth/schemas';
+import { RegisterForm } from '@/features/auth/register-form';
 
 export const metadata: Metadata = { title: 'Create account' };
 
-export default async function RegisterPage({
-  searchParams,
-}: {
+interface RegisterPageProps {
   searchParams: Promise<{ role?: string }>;
-}) {
-  // Extract the role from the address bar (URL query param) and hand it to
-  // the client form, which merges it into the register request.
-  const { role } = await searchParams;
-  const initialRole: UserRole | undefined =
-    role === 'candidate' || role === 'recruiter' ? role : undefined;
+}
+
+export default async function RegisterPage({ searchParams }: RegisterPageProps) {
+  const params = await searchParams;
+  const role = params.role === 'recruiter' ? 'recruiter' : 'candidate';
 
   return (
     <div className="animate-fade-in-up space-y-6">
       <header className="space-y-2 text-center lg:text-left">
-        <Logo className="mx-auto justify-center lg:hidden" />
         <h1 className="text-2xl font-semibold tracking-tight">
           Create your account
         </h1>
         <p className="text-sm text-muted-foreground">
-          Join JobDev and get hired faster.
+          Signing up as{' '}
+          <span className="font-semibold text-primary">
+            {role === 'recruiter' ? 'a recruiter' : 'a candidate'}
+          </span>
+          .{' '}
+          <Link
+            href={role === 'recruiter' ? '/register' : '/register?role=recruiter'}
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Switch
+          </Link>
         </p>
       </header>
 
-      <RegisterForm initialRole={initialRole} />
+      <RegisterForm role={role} />
 
       <p className="text-center text-sm text-muted-foreground">
         Already have an account?{' '}
         <Link
           href="/login"
-          className="font-medium text-primary hover:text-primary-hover"
+          className="font-medium text-primary underline-offset-4 hover:underline"
         >
-          Sign in
+          Log in
         </Link>
       </p>
     </div>

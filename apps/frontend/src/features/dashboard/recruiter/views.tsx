@@ -29,7 +29,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/auth';
 
+import { RecruiterProfileForm } from '../recruiter-profile-form';
 import { HelpCard } from './sidebar';
 import {
   INITIAL_CONVERSATIONS,
@@ -491,6 +493,17 @@ export function JobsView({
         </form>
       )}
 
+      {jobs.length === 0 && !open && (
+        <div className="animate-fade-in-up flex flex-col items-center gap-2 rounded-2xl border border-border bg-card p-10 text-center shadow-sm">
+          <Briefcase className="h-8 w-8 text-muted-foreground/50" />
+          <h3 className="font-semibold">No job posts yet</h3>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Publish your first role with “Post a job” - it takes under a
+            minute and goes live immediately.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-3">
         {jobs.map((job, index) => (
           <div
@@ -865,7 +878,9 @@ export function MessagesView() {
   const [conversations, setConversations] = useState<Conversation[]>(
     INITIAL_CONVERSATIONS,
   );
-  const [selectedId, setSelectedId] = useState(INITIAL_CONVERSATIONS[0].id);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    INITIAL_CONVERSATIONS[0]?.id ?? null,
+  );
   const [draft, setDraft] = useState('');
 
   const selected = conversations.find((c) => c.id === selectedId);
@@ -887,6 +902,19 @@ export function MessagesView() {
       ),
     );
     setDraft('');
+  }
+
+  if (conversations.length === 0) {
+    return (
+      <div className="animate-fade-in-up flex min-h-[420px] flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+        <Send className="h-8 w-8 text-muted-foreground/50" />
+        <h3 className="font-semibold">No conversations yet</h3>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          When applicants message you about a role, the conversation appears
+          here.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -983,64 +1011,68 @@ export function MessagesView() {
 /* --- Company profile / Settings / Help ------------------------------------- */
 
 export function CompanyView() {
+  const user = useAuthStore((state) => state.user);
+  const setUser = useAuthStore((state) => state.setUser);
   const [saved, setSaved] = useState(false);
 
-  function save(event: React.FormEvent) {
-    event.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  }
+  if (!user) return null;
 
   return (
-    <form
-      onSubmit={save}
-      className="animate-fade-in-up max-w-2xl space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm"
-    >
+    <div className="animate-fade-in-up max-w-2xl space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
       <h2 className="text-xl font-bold">Company profile</h2>
       <p className="text-sm text-muted-foreground">
         This is what candidates see on your job posts.
       </p>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="co-name">Company name</Label>
-          <Input id="co-name" defaultValue="JobDev Labs Pvt. Ltd." />
-        </div>
-        <div>
-          <Label htmlFor="co-site">Website</Label>
-          <Input id="co-site" defaultValue="https://jobdev.app" />
-        </div>
-        <div className="sm:col-span-2">
-          <Label htmlFor="co-about">About</Label>
-          <textarea
-            id="co-about"
-            rows={4}
-            defaultValue="We build hiring tools that treat candidates like humans, not rows in a spreadsheet."
-            className="flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        <Button type="submit">Save profile</Button>
-        {saved && (
-          <span className="animate-pop-in inline-flex items-center gap-1.5 text-sm font-medium text-success">
-            <Check className="h-4 w-4" /> Saved
-          </span>
-        )}
-      </div>
-    </form>
+      <RecruiterProfileForm
+        user={user}
+        onSaved={(nextUser) => {
+          setUser(nextUser);
+          setSaved(true);
+          setTimeout(() => setSaved(false), 2500);
+        }}
+      />
+      {saved && (
+        <span className="animate-pop-in inline-flex items-center gap-1.5 text-sm font-medium text-success">
+          <Check className="h-4 w-4" /> Saved
+        </span>
+      )}
+    </div>
   );
 }
 
+const PREFS_KEY = 'jobdev-recruiter-prefs';
+
+const DEFAULT_PREFS = {
+  emailOnApply: true,
+  emailDigest: true,
+  smsAlerts: false,
+};
+
 export function SettingsView() {
   const [saved, setSaved] = useState(false);
-  const [prefs, setPrefs] = useState({
-    emailOnApply: true,
-    emailDigest: true,
-    smsAlerts: false,
+  const [prefs, setPrefs] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_PREFS;
+    try {
+      const raw = window.localStorage.getItem(PREFS_KEY);
+      if (raw) return { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<typeof DEFAULT_PREFS>) };
+    } catch {
+      /* fall back to defaults */
+    }
+    return DEFAULT_PREFS;
   });
 
   function toggle(key: keyof typeof prefs) {
     setPrefs((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function save() {
+    try {
+      window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    } catch {
+      /* storage may be unavailable; the in-memory values still apply */
+    }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
   }
 
   return (
@@ -1078,13 +1110,7 @@ export function SettingsView() {
         </label>
       ))}
       <div className="flex items-center gap-3">
-        <Button
-          type="button"
-          onClick={() => {
-            setSaved(true);
-            setTimeout(() => setSaved(false), 2500);
-          }}
-        >
+        <Button type="button" onClick={save}>
           Save preferences
         </Button>
         {saved && (
@@ -1380,8 +1406,7 @@ export function JobDrawer({
           <section>
             <h4 className="mb-1.5 font-semibold">About the role</h4>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {job.description ??
-                'Full description lands with the jobs backend module - this posting is demo data for now.'}
+              {job.description ?? 'No description provided for this posting yet.'}
             </p>
           </section>
 
@@ -1457,24 +1482,6 @@ export function AnalyticsView() {
           <h3 className="mb-3 text-sm font-semibold">Applicant sources</h3>
           <SourcesDonut slices={SOURCES} />
         </div>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        {[
-          { label: 'Avg. time to hire', value: '11 days' },
-          { label: 'Response rate', value: '94%' },
-          { label: 'Offer acceptance', value: '87%' },
-        ].map((stat, index) => (
-          <div
-            key={stat.label}
-            className="animate-fade-in-up rounded-2xl border border-border bg-card p-5 text-center shadow-sm transition-transform hover:-translate-y-0.5"
-            style={{ animationDelay: `${200 + index * 80}ms` }}
-          >
-            <p className="text-2xl font-bold text-primary-dark">{stat.value}</p>
-            <p className="mt-1 text-xs font-medium text-muted-foreground">
-              {stat.label}
-            </p>
-          </div>
-        ))}
       </div>
     </div>
   );
