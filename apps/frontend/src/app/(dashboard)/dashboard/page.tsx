@@ -15,7 +15,7 @@ export default function DashboardPage() {
 
   switch (user.role) {
     case 'recruiter':
-      return <RecruiterDashboard user={user} />;
+      return <RecruiterDashboard />;
     case 'admin':
       return <AdminDashboard user={user} />;
     case 'superadmin':
