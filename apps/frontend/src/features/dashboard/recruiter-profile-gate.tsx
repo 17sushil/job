@@ -23,7 +23,7 @@ export function RecruiterProfileGate() {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/50 p-4 backdrop-blur-md">
-      <div className="animate-pop-in relative w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-2xl">
+      <div className="animate-pop-in relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl scrollbar-slim">
         <button
           type="button"
           onClick={() => setDismissed(true)}

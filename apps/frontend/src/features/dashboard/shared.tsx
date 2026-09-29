@@ -73,6 +73,19 @@ export async function apiPost<T>(path: string, payload: unknown): Promise<T> {
   return body.data as T;
 }
 
+export async function apiPatch<T>(path: string, payload: unknown): Promise<T> {
+  const res = await apiClient(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(await readApiError(res));
+  }
+  const body = await res.json();
+  return body.data as T;
+}
+
 export interface JobRow {
   id: string;
   title: string;
@@ -82,6 +95,7 @@ export interface JobRow {
   status: string;
   source: string;
   createdAt: string;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface UserRow {

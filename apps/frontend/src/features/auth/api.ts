@@ -10,6 +10,7 @@ export interface AuthUser {
   name: string | null;
   role: UserRole;
   companyName: string | null;
+  aboutCompany: string | null;
   contactNumber: string | null;
   avatar: string | null;
   resumeFileName: string | null;
@@ -33,6 +34,7 @@ export interface RegisterPayload {
 export interface UpdateProfilePayload {
   name?: string;
   companyName?: string;
+  aboutCompany?: string | null;
   contactNumber?: string;
   avatar?: string;
 }
