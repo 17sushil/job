@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { Logo } from '@/components/logo';
-import { LoginForm } from '@/features/auth/components/login-form';
+import { LoginForm } from '@/features/auth/login-form';
 
 export const metadata: Metadata = { title: 'Login' };
 
@@ -10,10 +9,9 @@ export default function LoginPage() {
   return (
     <div className="animate-fade-in-up space-y-6">
       <header className="space-y-2 text-center lg:text-left">
-        <Logo className="mx-auto justify-center lg:hidden" />
         <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
         <p className="text-sm text-muted-foreground">
-          Sign in to continue your job search.
+          Log in to continue to your dashboard.
         </p>
       </header>
 
@@ -23,7 +21,7 @@ export default function LoginPage() {
         New to JobDev?{' '}
         <Link
           href="/register"
-          className="font-medium text-primary hover:text-primary-hover"
+          className="font-medium text-primary underline-offset-4 hover:underline"
         >
           Create an account
         </Link>

@@ -30,8 +30,19 @@ function toPath(points: ReadonlyArray<readonly [number, number]>) {
     .join(' ');
 }
 
+const ChartEmpty = ({ note }: { note: string }) => (
+  <div className="flex h-52 items-center justify-center rounded-xl border border-dashed border-border">
+    <p className="px-6 text-center text-sm text-muted-foreground">{note}</p>
+  </div>
+);
+
 /** Applications vs profile views across the last 8 weeks. */
 export function ApplicationsTrend() {
+  if (WEEKLY.length === 0) {
+    return (
+      <ChartEmpty note="Your weekly trend appears here once you start applying." />
+    );
+  }
   const max =
     Math.max(
       ...WEEKLY.map((week) => week.applications),
@@ -130,6 +141,9 @@ export function ApplicationsTrend() {
 
 /** Applications per week as bars growing from the baseline. */
 export function WeeklyBars() {
+  if (WEEKLY.length === 0) {
+    return <ChartEmpty note="Weekly application counts appear here after you apply." />;
+  }
   const max = Math.max(...WEEKLY.map((week) => week.applications)) * 1.2;
 
   return (
@@ -160,6 +174,9 @@ export function WeeklyBars() {
 /** Horizontal demand bars: green where the candidate has the skill,
  * hollow where it is still a gap. */
 export function SkillDemandBars() {
+  if (SKILL_DEMAND.length === 0) {
+    return <ChartEmpty note="Skill demand insights appear here once available." />;
+  }
   const max = Math.max(...SKILL_DEMAND.map((item) => item.roles));
 
   return (
@@ -278,6 +295,9 @@ export function SourcesDonut({
   slices: Array<{ label: string; value: number; colorClass: string }>;
 }) {
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  if (total === 0) {
+    return <ChartEmpty note="Application sources appear here once you apply." />;
+  }
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
   let offset = 0;

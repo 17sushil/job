@@ -1,14 +1,26 @@
 import { AppDataSource } from '../../database/data-source.js';
-import { User } from './user.entity.js';
+import { User, UserRole } from './user.entity.js';
 import type { CreateUserInput, UpdateUserInput } from './user.types.js';
 
 export class UserRepository {
   private readonly repository = AppDataSource.getRepository(User);
 
-  async findMany() {
+  async findMany(includeDeleted = false) {
     return this.repository.find({
-      order: { createdAt: 'desc' },
+      where: includeDeleted ? {} : { isDeleted: false },
+      order: { createdAt: 'DESC' },
     });
+  }
+
+  async findByRole(role: UserRole, includeDeleted = false) {
+    return this.repository.find({
+      where: { role, isDeleted: includeDeleted ? undefined : false },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async countByRole(role: UserRole) {
+    return this.repository.count({ where: { role, isDeleted: false } });
   }
 
   async findById(userId: string) {
@@ -18,7 +30,7 @@ export class UserRepository {
   async findByEmail(email: string) {
     return this.repository.findOneBy({ email });
   }
-  
+
   async findByMobile(mobile: string) {
     return this.repository.findOneBy({ mobile });
   }
@@ -30,9 +42,5 @@ export class UserRepository {
   async update(userId: string, data: UpdateUserInput) {
     await this.repository.update(userId, data);
     return this.repository.findOneByOrFail({ userId });
-  }
-
-  async delete(userId: string) {
-    await this.repository.delete(userId);
   }
 }

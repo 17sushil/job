@@ -1,14 +1,13 @@
 import { database } from './config/database.js';
 import { env } from './config/env.js';
-import { connectRedis, redisClient } from './config/redis.js';
+import { seedTestAccounts } from './database/seed.js';
 
 const start = async () => {
   try {
     await database.connect();
-    await connectRedis();
-    console.log('Redis connected successfully.');
+    await seedTestAccounts();
   } catch (err) {
-    console.error('Unable to initialize connections:', err);
+    console.error('Unable to connect to the database:', err);
     process.exit(1);
   }
 
@@ -21,7 +20,6 @@ const start = async () => {
   const gracefulShutdown = (signal: string) => {
     console.log(`\nReceived ${signal}. Gracefully shutting down...`);
     server.close(() => {
-      redisClient.quit();
       void database.disconnect().finally(() => process.exit(0));
     });
   };
