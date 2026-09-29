@@ -68,7 +68,7 @@ export interface Notification {
   text: string;
   time: string;
   read: boolean;
-  view: 'applicants' | 'messages' | 'jobs';
+  view: 'applicants' | 'jobs';
 }
 
 export const INITIAL_JOBS: Job[] = [];
