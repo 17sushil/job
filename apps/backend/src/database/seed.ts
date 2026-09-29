@@ -21,8 +21,8 @@ const ACCOUNTS = [
     password: 'Recruiter123',
     role: UserRole.RECRUITER,
     name: 'Test Recruiter',
-    companyName: 'Acme Corp',
-    contactNumber: '9800000002',
+    /* companyName / contactNumber / avatar intentionally NOT seeded so the
+       blocking company-profile gate is visible on first login. */
   },
   {
     email: 'admin@jobdev.app',
