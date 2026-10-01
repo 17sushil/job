@@ -9,6 +9,7 @@ import {
   register,
   updateProfile,
   uploadResume,
+  logSearchHistory,
   verifyOtp,
 } from './auth.controller.js';
 import {
@@ -29,6 +30,7 @@ authRoutes.get('/me', authMiddleware, getCurrentUser);
 authRoutes.post('/logout', authMiddleware, logoutUser);
 authRoutes.patch('/profile', authMiddleware, validate(updateProfileSchema), updateProfile);
 authRoutes.post('/resume', authMiddleware, validate(uploadResumeSchema), uploadResume);
+authRoutes.post('/search-history', authMiddleware, logSearchHistory);
 authRoutes.post(
   '/change-password',
   authMiddleware,

@@ -1,3 +1,5 @@
+import { SearchHistory } from '../user/search-history.entity.js';
+import { AppDataSource } from '../../database/data-source.js';
 import type { RequestHandler } from 'express';
 import { AppError } from '../../common/errors/AppError.js';
 import {
@@ -90,6 +92,23 @@ export const updateProfile: RequestHandler = async (req, res, next) => {
   try {
     const user = await authService.updateProfile(req.user!.userId, req.body);
     res.json({ success: true, data: { user: toSafeUser(user) } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const logSearchHistory: RequestHandler = async (req, res, next) => {
+  try {
+    const { keyword } = req.body;
+    if (keyword && typeof keyword === 'string' && req.user) {
+      const repo = AppDataSource.getRepository(SearchHistory);
+      await repo.save(repo.create({
+        userId: req.user.userId,
+        role: req.user.role,
+        keyword: keyword.trim().slice(0, 255),
+      }));
+    }
+    res.json({ success: true, data: { message: 'Logged' } });
   } catch (error) {
     next(error);
   }

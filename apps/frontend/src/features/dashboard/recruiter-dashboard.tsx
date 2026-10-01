@@ -337,10 +337,10 @@ export function RecruiterDashboard() {
       status === 'Active'
         ? undefined
         : new Date().toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          });
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
     setJobs((current) =>
       current.map((job) =>
         job.id === id ? { ...job, status, statusChangedOn: changedOn } : job,
@@ -422,7 +422,7 @@ export function RecruiterDashboard() {
             <div className="relative min-w-0 flex-1 sm:flex-none" ref={searchRef}>
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search jobs, people…"
+                placeholder="Search people…"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="w-full pl-9 sm:w-56"
