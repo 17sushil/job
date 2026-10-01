@@ -37,6 +37,7 @@ import {
   Zap,
 } from 'lucide-react';
 
+import { logSearchKeywordRequest } from '@/features/auth/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1013,6 +1014,32 @@ export function JobsView({
   const [workMode, setWorkMode] = useState<WorkMode | 'Any'>('Any');
   const [minMatch, setMinMatch] = useState(0);
   const [sort, setSort] = useState<'match' | 'recent' | 'salary'>('match');
+  const [keywordFilters, setKeywordFilters] = useState<string[]>([]);
+  useEffect(() => {
+    if (!query.trim()) return;
+    const timeoutId = setTimeout(() => {
+      logSearchKeywordRequest(query.trim()).catch(() => {});
+    }, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [query]);
+  const keywordOptions = useMemo(() => {
+    const DEFAULT_KEYWORDS = ['Frontend', 'Backend', 'Full-stack', 'React', 'Node.js', 'TypeScript', 'Engineer', 'Designer'];
+    const derived = new Map<string, number>();
+    for (const job of jobs) {
+      const candidates = [job.company, job.location, ...job.matchedSkills, ...job.missingSkills];
+      for (const raw of candidates) {
+        if (!raw) continue;
+        const kw = raw.trim();
+        if (kw.length < 2 || kw.length > 20) continue;
+        derived.set(kw, (derived.get(kw) ?? 0) + 1);
+      }
+    }
+    DEFAULT_KEYWORDS.forEach((kw) => derived.set(kw, (derived.get(kw) ?? 0) + 1));
+    return Array.from(derived.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map((entry) => entry[0])
+      .slice(0, 15);
+  }, [jobs]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -1021,6 +1048,15 @@ export function JobsView({
         workMode === 'Any' ? true : job.workMode === workMode,
       )
       .filter((job) => job.match >= minMatch)
+      .filter((job) =>
+        keywordFilters.length === 0
+          ? true
+          : keywordFilters.some((kw) =>
+              `${job.title} ${job.company} ${job.location} ${job.matchedSkills.join(' ')} ${job.missingSkills.join(' ')}`
+                .toLowerCase()
+                .includes(kw.toLowerCase())
+            )
+      )
       .filter((job) =>
         q
           ? `${job.title} ${job.company} ${job.location} ${job.matchedSkills.join(' ')}`
@@ -1038,7 +1074,7 @@ export function JobsView({
       }
       return b.match - a.match;
     });
-  }, [jobs, query, workMode, minMatch, sort]);
+  }, [jobs, query, workMode, minMatch, sort, keywordFilters]);
 
   return (
     <div className="space-y-5">
@@ -1104,6 +1140,34 @@ export function JobsView({
             <option value="recent">Newest</option>
             <option value="salary">Highest salary</option>
           </select>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border w-full">
+          {keywordFilters.map((keyword) => (
+            <button
+              key={keyword}
+              type="button"
+              onClick={() => setKeywordFilters((c) => c.filter((k) => k !== keyword))}
+              className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground transition-transform active:scale-95"
+            >
+              {keyword}
+              <X className="h-3 w-3" />
+            </button>
+          ))}
+          {keywordOptions
+            .filter((keyword) => !keywordFilters.includes(keyword))
+            .map((keyword) => (
+              <button
+                key={keyword}
+                type="button"
+                onClick={() => {
+                  setKeywordFilters((c) => [...c, keyword]);
+                  logSearchKeywordRequest(keyword).catch(() => {});
+                }}
+                className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary-dark"
+              >
+                + {keyword}
+              </button>
+            ))}
         </div>
 
         <p className="text-xs text-muted-foreground">

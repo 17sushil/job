@@ -121,3 +121,10 @@ export const recruiterProfileIncomplete = (user: AuthUser | null) =>
 
 export const candidateProfileIncomplete = (user: AuthUser | null) =>
   !!user && user.role === 'candidate' && !user.resumeFileName;
+
+export async function logSearchKeywordRequest(keyword: string) {
+  return apiClient('/api/auth/search-history', {
+    method: 'POST',
+    ...jsonInit({ keyword }),
+  });
+}
