@@ -128,3 +128,18 @@ export async function logSearchKeywordRequest(keyword: string) {
     ...jsonInit({ keyword }),
   });
 }
+
+
+export async function formatResumeRequest(fileName: string, dataBase64: string) {
+  return apiClient('/api/auth/resume/format', {
+    method: 'POST',
+    ...jsonInit({ fileName, dataBase64 }),
+  });
+}
+
+export async function saveResumeDraftRequest(parsedJson: Record<string, unknown>) {
+  return apiClient('/api/auth/resume/draft', {
+    method: 'POST',
+    ...jsonInit({ parsedJson }),
+  });
+}

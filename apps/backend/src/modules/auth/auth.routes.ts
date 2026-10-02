@@ -9,6 +9,8 @@ import {
   register,
   updateProfile,
   uploadResume,
+  formatResumeProxy,
+  saveResumeDraft,
   logSearchHistory,
   verifyOtp,
 } from './auth.controller.js';

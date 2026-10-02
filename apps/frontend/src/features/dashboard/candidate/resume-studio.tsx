@@ -1,4 +1,5 @@
 'use client';
+import { saveResumeDraftRequest } from '../../auth/api';
 
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -284,6 +285,7 @@ export function ResumeStudioView({
       const parsed = await parseAtsResume({
         parseUrl: result?.parseUrl ?? null,
         jobId: result?.jobId ?? null,
+        parsedJson: (result as any)?.parsedJson ?? null,
         rawFile: rawFileRef.current,
       });
       setEditing(parsed);
@@ -299,6 +301,8 @@ export function ResumeStudioView({
   function saveEdit(document: ResumeDocument) {
     try {
       const { blob, pages } = resumePdf(document);
+      // Save to database as v2/v3 etc.
+      saveResumeDraftRequest(document as any).catch(e => console.error('Failed to save draft version', e));
       const slug = document.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       onResultChange({
         fileName: result?.fileName ?? `${slug || 'resume'}-ats-resume.pdf`,

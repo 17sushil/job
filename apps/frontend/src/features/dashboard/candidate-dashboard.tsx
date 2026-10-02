@@ -90,8 +90,12 @@ const initialsOf = (value: string) =>
     .join('')
     .toUpperCase() || 'JD';
 
-const daysSince = (iso: string) =>
-  Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+const daysSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+const hoursSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000));
+const formatPostedTime = (hours: number, days: number) => {
+  if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+  return days === 1 ? '1 day ago' : `${days} days ago`;
+};
 
 function mapLiveJob(job: JobRow): JobPosting {
   const metadata = job.metadata ?? {};
@@ -109,6 +113,8 @@ function mapLiveJob(job: JobRow): JobPosting {
     type: (str(metadata.employmentType) as JobPosting['type'] | null) ?? 'Full-time',
     salary: str(metadata.salary) ?? 'Negotiable',
     postedDaysAgo: daysSince(job.createdAt),
+    postedHoursAgo: hoursSince(job.createdAt),
+    postedTimeText: formatPostedTime(hoursSince(job.createdAt), daysSince(job.createdAt)),
     postedOn: new Date(job.createdAt).toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
@@ -425,14 +431,7 @@ export function CandidateDashboard() {
       hint: 'Open your applications',
       go: () => setView('applications'),
     },
-    {
-      label: 'Interviews scheduled',
-      value: upcomingInterviews.length,
-      delta: `Next: ${upcomingInterviews[0]?.date ?? 'book one'}`,
-      icon: CalendarCheck,
-      hint: 'Open your interview schedule',
-      go: () => setView('interviews'),
-    },
+    /* { label: 'Interviews scheduled' ... } */
     {
       label: 'Saved jobs',
       value: savedIds.length,

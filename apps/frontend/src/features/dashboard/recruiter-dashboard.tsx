@@ -45,8 +45,12 @@ import {
   StatusChip,
 } from './recruiter/views';
 
-const daysSince = (iso: string) =>
-  Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+const daysSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+const hoursSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000));
+const formatPostedTime = (hours: number, days: number) => {
+  if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+  return days === 1 ? '1 day ago' : `${days} days ago`;
+};
 
 /* Map an API job row into the recruiter workspace Job shape. */
 function mapApiJob(row: JobRow): Job {
@@ -64,6 +68,8 @@ function mapApiJob(row: JobRow): Job {
     applicants: 0,
     views: 0,
     postedDaysAgo: daysSince(row.createdAt),
+    postedHoursAgo: hoursSince(row.createdAt),
+    postedTimeText: formatPostedTime(hoursSince(row.createdAt), daysSince(row.createdAt)),
     postedOn: new Date(row.createdAt).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -139,13 +145,18 @@ export function RecruiterDashboard() {
 
   const [view, setView] = useState<RecruiterView>('overview');
   const [jobs, setJobs] = useState<Job[]>(INITIAL_JOBS);
-  const [applicants, setApplicants] =
-    useState<Applicant[]>(INITIAL_APPLICANTS);
+  const [applicants, setApplicants] = useState<Applicant[]>([]);
 
   /* Jobs are real rows: load what this recruiter has posted. */
   useEffect(() => {
-    apiGet<{ jobs: JobRow[] }>('/api/jobs/mine')
-      .then((data) => setJobs(data.jobs.map(mapApiJob)))
+    Promise.all([
+      apiGet<{ jobs: JobRow[] }>('/api/jobs/mine'),
+      apiGet<{ applicants: Applicant[] }>('/api/applications/recruiter')
+    ])
+      .then(([jobsData, applicantsData]) => {
+        setJobs(jobsData.jobs.map(mapApiJob));
+        setApplicants(applicantsData.applicants);
+      })
       .catch((error: Error) =>
         toast({ title: error.message, variant: 'destructive' }),
       );
@@ -197,30 +208,6 @@ export function RecruiterDashboard() {
   const [selectedApplicant, setSelectedApplicant] =
     useState<Applicant | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [query, setQuery] = useState('');
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  /* Close the search dropdown on outside click / Escape so an open result
-     list never blocks the Post-a-job form or anything else. */
-  useEffect(() => {
-    function onPointerDown(event: MouseEvent) {
-      if (
-        searchRef.current &&
-        !searchRef.current.contains(event.target as Node)
-      ) {
-        setQuery('');
-      }
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') setQuery('');
-    }
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, []);
 
   const firstName =
     (user?.name || user?.identifier || 'there').split(/[@\s]/)[0] || 'there';
@@ -258,22 +245,7 @@ export function RecruiterDashboard() {
           setView('applicants');
         },
       },
-      {
-        label: 'Interviews scheduled',
-        value: applicants.filter((a) => a.status === 'Interview').length,
-        delta: (() => {
-          const next = applicants.find(
-            (a) => a.status === 'Interview' && a.scheduledDate,
-          );
-          return next ? `Next: ${next.scheduledDate}` : 'None scheduled yet';
-        })(),
-        icon: CalendarCheck,
-        hint: 'View applicants in interview',
-        go: () => {
-          setStatusFilter('Interview');
-          setView('applicants');
-        },
-      },
+      /* { label: 'Interviews scheduled' ... omitted for now } */
       {
         label: 'Job views',
         value: jobs.reduce((sum, job) => sum + job.views, 0),
@@ -287,16 +259,6 @@ export function RecruiterDashboard() {
   );
 
   /* Working global search: matches jobs + applicants, click to jump in. */
-  const searchResults = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return null;
-    return {
-      jobs: jobs.filter((job) => job.title.toLowerCase().includes(q)).slice(0, 4),
-      applicants: applicants
-        .filter((applicant) => applicant.name.toLowerCase().includes(q))
-        .slice(0, 4),
-    };
-  }, [query, jobs, applicants]);
 
   const unread = notifications.filter((n) => !n.read).length;
 
@@ -406,7 +368,7 @@ export function RecruiterDashboard() {
         <div
           className={cn(
             'animate-fade-in relative flex flex-wrap items-center justify-between gap-3',
-            notifOpen || query.trim() ? 'z-40' : 'z-0',
+            notifOpen ? 'z-40' : 'z-0',
           )}
         >
           <div className="min-w-0 w-full sm:w-auto">
@@ -419,71 +381,6 @@ export function RecruiterDashboard() {
             </p>
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
-            <div className="relative min-w-0 flex-1 sm:flex-none" ref={searchRef}>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search people…"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="w-full pl-9 sm:w-56"
-              />
-              {searchResults && (
-                <div className="animate-pop-in absolute left-0 right-0 top-full z-30 mt-2 max-h-80 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl scrollbar-slim">
-                  {searchResults.jobs.length === 0 &&
-                    searchResults.applicants.length === 0 && (
-                      <p className="p-3 text-center text-xs text-muted-foreground">
-                        No matches for “{query}”.
-                      </p>
-                    )}
-                  {searchResults.jobs.length > 0 && (
-                    <p className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                      Jobs
-                    </p>
-                  )}
-                  {searchResults.jobs.map((job) => (
-                    <button
-                      key={job.id}
-                      type="button"
-                      onClick={() => {
-                        setQuery('');
-                        setSelectedJob(job);
-                      }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-primary-light"
-                    >
-                      <Briefcase className="h-4 w-4 shrink-0 text-primary" />
-                      <span className="truncate font-medium">{job.title}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        {job.applicants} applicants
-                      </span>
-                    </button>
-                  ))}
-                  {searchResults.applicants.length > 0 && (
-                    <p className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                      People
-                    </p>
-                  )}
-                  {searchResults.applicants.map((applicant) => (
-                    <button
-                      key={applicant.id}
-                      type="button"
-                      onClick={() => {
-                        setQuery('');
-                        setSelectedApplicant(applicant);
-                      }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-primary-light"
-                    >
-                      <Avatar name={applicant.name} className="h-6 w-6 text-[9px]" />
-                      <span className="truncate font-medium">
-                        {applicant.name}
-                      </span>
-                      <span className="ml-auto">
-                        <StatusChip status={applicant.status} />
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
 
             {/* Notifications dropdown, opened from the navbar bell */}
             <div>
@@ -618,10 +515,7 @@ export function RecruiterDashboard() {
                       <span className="h-2 w-2 rounded-full bg-primary" />
                       Applications
                     </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-info" />
-                      Interviews
-                    </span>
+                     {/* <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-info" />Interviews</span> */} 
                   </div>
                 </div>
                 <ApplicationsChart />
@@ -700,6 +594,7 @@ export function RecruiterDashboard() {
                   .slice(0, 4)
                   .map((job) => (
                     <button
+                      key={job.id}
                       type="button"
                       title="Open job details"
                       onClick={() => setSelectedJob(job)}
