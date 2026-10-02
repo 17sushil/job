@@ -218,15 +218,17 @@ export class AuthService {
     const rawEmail = text(basics.email).toLowerCase();
     const rawPhone = text(basics.phone);
 
+    /* For now the CV only fills identity fields that are still empty, so an
+       account's existing login credentials keep working after an upload. */
     let cvEmail = '';
-    if (rawEmail && EMAIL_PATTERN.test(rawEmail)) {
+    if (!user.email && rawEmail && EMAIL_PATTERN.test(rawEmail)) {
       const taken = await this.userRepo.findByEmail(rawEmail);
-      if (!taken || taken.userId === user.userId) cvEmail = rawEmail;
+      if (!taken) cvEmail = rawEmail;
     }
     let cvPhone = '';
-    if (rawPhone) {
+    if (!user.mobile && rawPhone) {
       const taken = await this.userRepo.findByMobile(rawPhone);
-      if (!taken || taken.userId === user.userId) cvPhone = rawPhone;
+      if (!taken) cvPhone = rawPhone;
     }
 
     return this.userRepo.update(userId, {
