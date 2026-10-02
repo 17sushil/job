@@ -69,13 +69,19 @@ import {
 /* Accepts either our own Save format (CandidateProfile-shaped) or the raw JSON
    the ATS extraction service returns (an envelope around JSON-Resume data),
    and normalizes both into profile fields. */
-function parseStoredProfile(raw: string | null | undefined): Partial<CandidateProfile> {
+function parseStoredProfile(
+  raw: string | Record<string, unknown> | null | undefined,
+): Partial<CandidateProfile> {
   if (!raw) return {};
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return {};
+  if (typeof raw === 'object') {
+    parsed = raw;
+  } else {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return {};
+    }
   }
   if (!parsed || typeof parsed !== 'object') return {};
   const envelope = parsed as Record<string, unknown>;

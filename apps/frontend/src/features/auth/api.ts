@@ -14,7 +14,7 @@ export interface AuthUser {
   contactNumber: string | null;
   avatar: string | null;
   resumeFileName: string | null;
-  parsedProfile: string | null;
+  parsedProfile: Record<string, unknown> | string | null;
   createdAt: string;
 }
 

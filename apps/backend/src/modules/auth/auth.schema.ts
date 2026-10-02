@@ -36,8 +36,10 @@ export const updateProfileSchema = z
       .optional(),
     avatar: z.string().max(400_000, 'Profile image is too large').optional(),
     parsedProfile: z
-      .string()
-      .max(500_000, 'Saved resume data is too large')
+      .union([
+        z.string().max(500_000, 'Saved resume data is too large'),
+        z.record(z.string(), z.unknown()),
+      ])
       .optional()
       .nullable(),
   })
