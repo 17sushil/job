@@ -28,16 +28,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
+import { apiClient } from '@/lib/api-client';
+import { readApiError } from '@/features/auth/api';
+import { useAuthStore } from '@/store/auth';
+
 import {
   ATS_ACCEPT_ATTR,
   ATS_ACCEPTED_LABEL,
   type AtsGenerationResult,
-  type AtsProgress,
   type AtsUploadedFile,
-  canParseResume,
   formatBytes,
-  generateAtsResume,
   parseAtsResume,
+  canParseResume,
+  toResumeDocument,
   toUploadedFile,
   triggerDownload,
   validateAtsUpload,
@@ -58,6 +61,18 @@ const TABS: Array<{ id: StudioTab; label: string; icon: typeof Eye }> = [
   { id: 'skills', label: 'Skills', icon: Sparkles },
   { id: 'review', label: 'Overall review', icon: Gauge },
 ];
+
+function readAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? '');
+      resolve(result.slice(result.indexOf(',') + 1));
+    };
+    reader.onerror = () => reject(new Error('Could not read the file'));
+    reader.readAsDataURL(file);
+  });
+}
 
 function fileKindLabel(kind: AtsUploadedFile['kind']): string {
   return kind === 'pdf' ? 'PDF' : 'Word';
@@ -117,6 +132,7 @@ export function ResumeStudioView({
   onNotify?: (message: string) => void;
   onSave: (next: CandidateProfile) => void;
 }) {
+  const setUser = useAuthStore((state) => state.setUser);
   const inputRef = useRef<HTMLInputElement>(null);
   const rawFileRef = useRef<File | null>(null);
 
@@ -127,7 +143,7 @@ export function ResumeStudioView({
 
   const [dragActive, setDragActive] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<AtsProgress>({ step: '', percent: 0 });
+  const [progress, setProgress] = useState<{ step: string; percent: number }>({ step: '', percent: 0 });
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ResumeDocument | null>(null);
   const [editBusy, setEditBusy] = useState(false);
@@ -180,6 +196,7 @@ export function ResumeStudioView({
     onFileChange(uploaded);
     rawFileRef.current = candidate;
     if (result) onResultChange(null);
+    void extract(candidate);
   }
 
   function handleDrop(event: React.DragEvent<HTMLDivElement>) {
@@ -189,26 +206,61 @@ export function ResumeStudioView({
     if (dropped) acceptFile(dropped);
   }
 
-  async function generate() {
-    if (!file || busy) return;
+  /* Upload to our backend: it forwards the file to the ATS extraction
+     service, stores the parsed data on the account and hands it back. */
+  async function extract(candidate: File | null) {
+    if (!candidate || busy) return;
     setBusy(true);
     setError(null);
-    setProgress({ step: 'Working…', percent: 5 });
+    setProgress({ step: 'Extracting resume…', percent: 40 });
     try {
-      const generated = await generateAtsResume({
-        file,
-        profile,
-        rawFile: rawFileRef.current,
-        onProgress: setProgress,
+      const dataBase64 = await readAsBase64(candidate);
+      const res = await apiClient('/api/auth/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: candidate.name, dataBase64 }),
       });
-      onResultChange(generated);
-      setTab('preview');
-      onNotify?.('ATS-friendly resume is ready.');
+      if (!res.ok) {
+        throw new Error(await readApiError(res));
+      }
+      const body = (await res.json()) as {
+        data: {
+          user: Parameters<typeof setUser>[0];
+          parsed: Record<string, unknown> | null;
+          atsError: string | null;
+        };
+      };
+      setUser(body.data.user);
+      setProgress({ step: 'Saved', percent: 100 });
+      if (body.data.parsed) {
+        const document = toResumeDocument(body.data.parsed);
+        const { blob, pages } = resumePdf(document);
+        const slug = candidate.name
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '');
+        onResultChange({
+          fileName: `${slug || 'resume'}-ats-resume.pdf`,
+          blob,
+          pages,
+          generatedAt: new Date().toISOString(),
+          engine: 'service',
+          note: 'Data extracted by the ATS service and saved to your account.',
+          document,
+        });
+        setTab('preview');
+        onNotify?.('Resume extracted and saved to your account.');
+      } else {
+        onNotify?.(
+          body.data.atsError
+            ? `Resume saved. ${body.data.atsError}.`
+            : 'Resume saved to your account.',
+        );
+      }
     } catch (problem) {
       setError(
-        problem instanceof Error
-          ? `Generation failed: ${problem.message}`
-          : 'Generation failed. Try again.',
+        problem instanceof Error ? problem.message : 'Could not save the resume. Try again.',
       );
     } finally {
       setBusy(false);
@@ -430,9 +482,13 @@ export function ResumeStudioView({
           }}
         />
 
-        <Button className="w-full" onClick={generate} disabled={!file || busy}>
+        <Button
+          className="w-full"
+          onClick={() => extract(rawFileRef.current)}
+          disabled={!file || busy || !rawFileRef.current}
+        >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
-          {busy ? 'Generating…' : result ? 'Regenerate ATS resume' : 'Generate ATS resume'}
+          {busy ? 'Extracting…' : result ? 'Re-run extraction' : 'Extract & save'}
         </Button>
 
         {busy && (

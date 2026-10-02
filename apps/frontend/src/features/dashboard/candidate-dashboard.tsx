@@ -65,13 +65,65 @@ import {
   StatusChip,
 } from './candidate/views';
 
+/* Accepts either our own Save format (CandidateProfile-shaped) or the raw JSON
+   the ATS extraction service returns, and normalizes both into profile fields. */
 function parseStoredProfile(raw: string | null | undefined): Partial<CandidateProfile> {
   if (!raw) return {};
+  let parsed: unknown;
   try {
-    return JSON.parse(raw) as Partial<CandidateProfile>;
+    parsed = JSON.parse(raw);
   } catch {
     return {};
   }
+  if (!parsed || typeof parsed !== 'object') return {};
+  const data = parsed as Record<string, unknown>;
+  const str = (value: unknown) =>
+    typeof value === 'string' && value.trim() ? value.trim() : null;
+  const list = (value: unknown) =>
+    Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+  const out: Partial<CandidateProfile> = {};
+
+  const name = str(data.name);
+  if (name) out.name = name;
+  const headline = str(data.headline) ?? str(data.title) ?? str(data.role);
+  if (headline) out.headline = headline;
+  const about = str(data.about) ?? str(data.summary);
+  if (about) out.about = about;
+  const email = str(data.email);
+  if (email) out.email = email;
+  const phone = str(data.phone);
+  if (phone) out.phone = phone;
+  const location = str(data.location);
+  if (location) out.location = location;
+
+  const skills = list(data.skills);
+  if (skills.length > 0) out.skills = skills;
+
+  if (Array.isArray(data.experience)) {
+    const experience = data.experience
+      .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+      .map((entry) => ({
+        role: str(entry.role) ?? str(entry.title) ?? 'Role',
+        company: str(entry.company) ?? 'Company',
+        period: str(entry.period) ?? str(entry.duration) ?? '',
+        highlights: list(entry.highlights),
+      }));
+    if (experience.length > 0) out.experience = experience;
+  }
+
+  if (Array.isArray(data.education)) {
+    const education = data.education
+      .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+      .map((entry) => ({
+        degree: str(entry.degree) ?? str(entry.qualification) ?? 'Qualification',
+        school: str(entry.school) ?? str(entry.institution) ?? 'Institution',
+        period: str(entry.period) ?? str(entry.duration) ?? '',
+      }));
+    if (education.length > 0) out.education = education;
+  }
+
+  return out;
 }
 
 const LIVE_STATUS: Record<string, ApplicationStatus> = {
