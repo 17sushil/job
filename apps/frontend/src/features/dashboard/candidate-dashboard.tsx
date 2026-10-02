@@ -20,6 +20,7 @@ import { apiGet, apiPost, type JobRow } from '@/features/dashboard/shared';
 import { CandidateProfileGate } from '@/features/dashboard/candidate-profile-gate';
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
+import { updateProfileRequest } from '@/features/auth/api';
 import { useAuthStore } from '@/store/auth';
 
 import {
@@ -239,6 +240,7 @@ function countByStatus(applications: Application[]): Record<ApplicationStatus, n
 
 export function CandidateDashboard() {
   const user = useAuthStore((state) => state.user);
+  const setUser = useAuthStore((state) => state.setUser);
   const logout = useAuthStore((state) => state.logout);
 
   const [view, setView] = useState<CandidateView>('overview');
@@ -326,6 +328,20 @@ export function CandidateDashboard() {
   useEffect(() => {
     void loadLiveData();
   }, [loadLiveData]);
+
+  /* Build-resume Save: update session state AND persist the edited profile so
+     it survives reloads (stored as parsedProfile on the account). */
+  async function persistProfile(next: CandidateProfile) {
+    setProfile(next);
+    const serialized = JSON.stringify(next);
+    try {
+      await updateProfileRequest({ parsedProfile: serialized });
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser) setUser({ ...currentUser, parsedProfile: serialized });
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Could not save your resume');
+    }
+  }
 
   /* ATS resume: the uploaded file and the generated download live here so they
      survive switching views (the studio itself is unmounted on navigation). */
@@ -888,6 +904,7 @@ export function CandidateDashboard() {
             result={atsResult}
             onResultChange={setAtsResult}
             onNotify={setToast}
+            onSave={persistProfile}
           />
         )}
 
