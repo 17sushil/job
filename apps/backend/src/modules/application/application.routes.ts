@@ -8,6 +8,109 @@ import { UserRole } from '../user/user.entity.js';
 import { JobRepository } from '../job/job.repository.js';
 import { ApplicationRepository } from './application.repository.js';
 
+
+import { UserRepository } from '../user/user.repository.js';
+import { AppDataSource } from '../../database/data-source.js';
+import { Application } from './application.entity.js';
+import { Job } from '../job/job.entity.js';
+import { User } from '../user/user.entity.js';
+
+const listRecruiterApplicants: RequestHandler = async (req, res, next) => {
+  try {
+    const jobRepo = AppDataSource.getRepository(Job);
+    const appRepo = AppDataSource.getRepository(Application);
+    const userRepo = AppDataSource.getRepository(User);
+    
+    // 1. Get all jobs posted by this recruiter
+    const jobs = await jobRepo.find({ where: { postedBy: req.user!.userId, isDeleted: false } });
+    const jobIds = jobs.map(j => j.id);
+    const jobMap = new Map(jobs.map(j => [j.id, j.title]));
+    
+    // 2. Get all applications for those jobs
+    let applications = [];
+    if (jobIds.length > 0) {
+      applications = await appRepo.createQueryBuilder('app')
+        .where('app.jobId IN (:...jobIds)', { jobIds })
+        .getMany();
+    }
+    
+    // 3. Get ALL candidates
+    const allCandidates = await userRepo.find({ where: { role: UserRole.CANDIDATE } });
+    
+    const applicants = [];
+    
+    for (const candidate of allCandidates) {
+      // Find if this candidate applied to any of our jobs
+      const candidateApps = applications.filter(a => a.candidateId === candidate.userId);
+      
+      let matchScore = 75;
+      let skills = [];
+      let experience = [];
+      let education = 'Not specified';
+      let summary = 'No summary provided.';
+      
+      if (candidate.parsedProfile) {
+        try {
+          const profile = JSON.parse(candidate.parsedProfile);
+          matchScore = profile.skills?.includes('React') ? 95 : 75;
+          skills = profile.skills || [];
+          if (profile.experience && Array.isArray(profile.experience)) {
+            experience = profile.experience.map(e => ({
+              role: e.title || 'Role',
+              company: e.company || 'Company',
+              period: e.duration || 'Period'
+            }));
+          }
+          if (profile.education && Array.isArray(profile.education) && profile.education.length > 0) {
+            education = profile.education[0].institution || 'University';
+          }
+        } catch(e) {}
+      }
+      
+      const baseApplicant = {
+        name: candidate.name || 'Unknown',
+        matchScore,
+        match: matchScore,
+        email: candidate.email || '',
+        phone: candidate.mobile || '',
+        location: 'Remote',
+        summary,
+        skills,
+        experience,
+        education,
+        resumeUrl: candidate.resumeFileName ? `/api/auth/resume/${candidate.resumeFileName}` : undefined
+      };
+      
+      if (candidateApps.length > 0) {
+        for (const app of candidateApps) {
+          applicants.push({
+            ...baseApplicant,
+            id: app.applicationId,
+            jobId: app.jobId,
+            job: jobMap.get(app.jobId) || 'Unknown Job',
+            appliedAt: app.createdAt.toISOString(),
+            status: app.status === 'NEW' ? 'New' : app.status
+          });
+        }
+      } else {
+        // Did not apply, but show as available
+        applicants.push({
+          ...baseApplicant,
+          id: candidate.userId, // use user id as unique key
+          jobId: null,
+          job: 'Available Candidate',
+          appliedAt: new Date().toISOString(),
+          status: 'New'
+        });
+      }
+    }
+
+    res.json({ success: true, data: { applicants } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const applySchema = z.object({
   jobId: z.string().uuid('Invalid job id'),
 });
@@ -69,7 +172,8 @@ const applyToJob: RequestHandler = async (req, res, next) => {
 
 export const applicationRoutes = Router();
 
-applicationRoutes.use(authMiddleware, requireRoles(UserRole.CANDIDATE));
+// Global auth removed in favor of route-specific roles
 
-applicationRoutes.get('/', listMyApplications);
-applicationRoutes.post('/', validate(applySchema), applyToJob);
+applicationRoutes.get('/', authMiddleware, requireRoles(UserRole.CANDIDATE), listMyApplications);
+applicationRoutes.get('/recruiter', authMiddleware, requireRoles(UserRole.RECRUITER), listRecruiterApplicants);
+applicationRoutes.post('/', authMiddleware, requireRoles(UserRole.CANDIDATE), validate(applySchema), applyToJob);

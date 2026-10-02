@@ -2,7 +2,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 module.exports = {
-  allowedDevOrigins: ['*.e2b.app'],
+  allowedDevOrigins: ['*.e2b.app', '*.ritikthakur.com.np'],
   async headers() {
     return [
       {

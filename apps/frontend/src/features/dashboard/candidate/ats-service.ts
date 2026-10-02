@@ -39,6 +39,8 @@ import {
   type ResumeDocument,
   type ResumeSection,
 } from './demo-resume-pdf';
+import { formatResumeRequest } from '../../auth/api';
+
 import type { CandidateProfile } from './mock-data';
 
 /* -------------------------------------------------------------------------- */
@@ -256,6 +258,7 @@ export interface AtsGenerationResult {
   endpoint?: string;
   /** `x-job-id` from the format response — the handle used to fetch the JSON. */
   jobId?: string;
+  parsedJson?: any;
   /**
    * `x-resume-json-url` from the format response, resolved to an absolute URL.
    * When the service sends it, Edit needs no configuration at all — it simply
@@ -271,6 +274,7 @@ export interface GenerateAtsResumeInput {
   profile: CandidateProfile;
   /** The real File, when the candidate uploaded one. */
   rawFile?: File | null;
+  parsedJson?: any | null;
   onProgress?: (progress: AtsProgress) => void;
 }
 
@@ -1311,7 +1315,10 @@ export async function parseAtsResume(input: {
   /** The uploaded file, used only when the service offers neither. */
   rawFile?: File | null;
   endpoint?: string;
+  parsedJson?: any;
 }): Promise<ResumeDocument> {
+  if (input.parsedJson) return toResumeDocument(input.parsedJson);
+
   const endpoint = (input.endpoint ?? ATS_PARSE_ENDPOINT).trim();
   const direct = (input.parseUrl ?? '').trim();
   if (!direct && !endpoint) {

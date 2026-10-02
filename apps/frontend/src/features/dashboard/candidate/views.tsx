@@ -9,7 +9,7 @@ import {
   Building2,
   CalendarCheck,
   Check,
-  CheckCheck,
+  CheckCheck, Search,
   ChevronDown,
   Clock,
   Compass,
@@ -1087,14 +1087,31 @@ export function JobsView({
       </div>
 
       <div className="animate-fade-in-up space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
-        <div className="relative">
-          <Compass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by title, company, skill or city…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="w-full pl-9"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Compass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by title, company, skill or city…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && query.trim()) {
+                  logSearchKeywordRequest(query).catch(() => {});
+                }
+              }}
+              className="w-full pl-9"
+            />
+          </div>
+          <Button 
+            type="button" 
+            variant="default" 
+            onClick={() => {
+              if (query.trim()) logSearchKeywordRequest(query).catch(() => {});
+            }}
+          >
+            <Search className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Search</span>
+          </Button>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -1160,7 +1177,8 @@ export function JobsView({
                 key={keyword}
                 type="button"
                 onClick={() => {
-                  setKeywordFilters((c) => [...c, keyword]);
+                  const newQuery = query ? `${query} ${keyword}` : keyword;
+                  setQuery(newQuery);
                   logSearchKeywordRequest(keyword).catch(() => {});
                 }}
                 className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary-dark"
@@ -1242,7 +1260,7 @@ export function JobsView({
                     {job.location}
                   </span>
                   <span>{job.type}</span>
-                  <span>posted {job.postedDaysAgo}d ago</span>
+                  <span>posted {job.postedTimeText}</span>
                 </div>
 
                 <p className="mt-2 text-sm font-semibold">
@@ -1600,7 +1618,7 @@ export function JobDrawer({
 
           <section className="text-xs text-muted-foreground">
             Posted {job.postedOn} · {job.applicants} applicants so far ·{' '}
-            {job.postedDaysAgo}d ago
+            {job.postedTimeText}
           </section>
         </div>
 

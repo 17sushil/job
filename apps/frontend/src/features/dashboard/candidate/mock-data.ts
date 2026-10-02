@@ -221,6 +221,8 @@ export interface JobPosting {
   type: JobType;
   salary: string;
   postedDaysAgo: number;
+  postedHoursAgo: number;
+  postedTimeText: string;
   postedOn: string;
   applicants: number;
   views: number;
