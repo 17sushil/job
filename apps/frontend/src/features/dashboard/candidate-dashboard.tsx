@@ -66,7 +66,8 @@ import {
 } from './candidate/views';
 
 /* Accepts either our own Save format (CandidateProfile-shaped) or the raw JSON
-   the ATS extraction service returns, and normalizes both into profile fields. */
+   the ATS extraction service returns (an envelope around JSON-Resume data),
+   and normalizes both into profile fields. */
 function parseStoredProfile(raw: string | null | undefined): Partial<CandidateProfile> {
   if (!raw) return {};
   let parsed: unknown;
@@ -76,49 +77,99 @@ function parseStoredProfile(raw: string | null | undefined): Partial<CandidatePr
     return {};
   }
   if (!parsed || typeof parsed !== 'object') return {};
-  const data = parsed as Record<string, unknown>;
+  const envelope = parsed as Record<string, unknown>;
+  /* The extraction service wraps a JSON-Resume object in raw_resume_data. */
+  const resume =
+    envelope.raw_resume_data && typeof envelope.raw_resume_data === 'object'
+      ? (envelope.raw_resume_data as Record<string, unknown>)
+      : envelope;
+  const basics =
+    resume.basics && typeof resume.basics === 'object'
+      ? (resume.basics as Record<string, unknown>)
+      : {};
+  const levels = [envelope, resume, basics];
+
   const str = (value: unknown) =>
     typeof value === 'string' && value.trim() ? value.trim() : null;
-  const list = (value: unknown) =>
-    Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  const first = (keys: string[]) => {
+    for (const level of levels) {
+      for (const key of keys) {
+        const hit = str(level[key]);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  };
 
   const out: Partial<CandidateProfile> = {};
 
-  const name = str(data.name);
+  const name = first(['name', 'candidate_name']);
   if (name) out.name = name;
-  const headline = str(data.headline) ?? str(data.title) ?? str(data.role);
+  const headline = first(['headline', 'label', 'title', 'role']);
   if (headline) out.headline = headline;
-  const about = str(data.about) ?? str(data.summary);
+  const about = first(['about', 'summary']);
   if (about) out.about = about;
-  const email = str(data.email);
+  const email = first(['email']);
   if (email) out.email = email;
-  const phone = str(data.phone);
+  const phone = first(['phone']);
   if (phone) out.phone = phone;
-  const location = str(data.location);
-  if (location) out.location = location;
+  const locationRaw =
+    first(['location']) ??
+    (basics.location && typeof basics.location === 'object'
+      ? str((basics.location as Record<string, unknown>).raw) ??
+        str((basics.location as Record<string, unknown>).city)
+      : null);
+  if (locationRaw) out.location = locationRaw;
 
-  const skills = list(data.skills);
-  if (skills.length > 0) out.skills = skills;
+  /* skills: either string[] or [{ keywords: string[] }] (JSON Resume). */
+  if (Array.isArray(resume.skills)) {
+    const skills: string[] = [];
+    for (const item of resume.skills) {
+      if (typeof item === 'string') {
+        if (!skills.includes(item)) skills.push(item);
+      } else if (item && typeof item === 'object') {
+        const entry = item as Record<string, unknown>;
+        const keywords = Array.isArray(entry.keywords) ? entry.keywords : [];
+        for (const keyword of keywords) {
+          if (typeof keyword === 'string' && !skills.includes(keyword)) skills.push(keyword);
+        }
+        const single = str(entry.name);
+        if (single && single.toLowerCase() !== 'other' && !skills.includes(single)) {
+          skills.push(single);
+        }
+      }
+    }
+    if (skills.length > 0) out.skills = skills;
+  }
 
-  if (Array.isArray(data.experience)) {
-    const experience = data.experience
+  /* experience: our {role,company,period} or JSON Resume work entries. */
+  const workSource = Array.isArray(resume.experience)
+    ? resume.experience
+    : Array.isArray(resume.work)
+      ? resume.work
+      : null;
+  if (workSource) {
+    const experience = workSource
       .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
       .map((entry) => ({
-        role: str(entry.role) ?? str(entry.title) ?? 'Role',
-        company: str(entry.company) ?? 'Company',
-        period: str(entry.period) ?? str(entry.duration) ?? '',
-        highlights: list(entry.highlights),
+        role: str(entry.role) ?? str(entry.position) ?? str(entry.title) ?? 'Role',
+        company: str(entry.company) ?? str(entry.name) ?? 'Company',
+        period: str(entry.period) ?? str(entry.datesRaw) ?? str(entry.duration) ?? '',
+        highlights: Array.isArray(entry.highlights)
+          ? entry.highlights.filter((h): h is string => typeof h === 'string')
+          : [],
       }));
     if (experience.length > 0) out.experience = experience;
   }
 
-  if (Array.isArray(data.education)) {
-    const education = data.education
+  /* education: our {degree,school,period} or JSON Resume education entries. */
+  if (Array.isArray(resume.education)) {
+    const education = (resume.education as unknown[])
       .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
       .map((entry) => ({
-        degree: str(entry.degree) ?? str(entry.qualification) ?? 'Qualification',
+        degree: str(entry.degree) ?? str(entry.area) ?? str(entry.qualification) ?? 'Qualification',
         school: str(entry.school) ?? str(entry.institution) ?? 'Institution',
-        period: str(entry.period) ?? str(entry.duration) ?? '',
+        period: str(entry.period) ?? str(entry.datesRaw) ?? str(entry.duration) ?? '',
       }));
     if (education.length > 0) out.education = education;
   }
