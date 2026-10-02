@@ -60,7 +60,7 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export const uploadResumeSchema = z.object({
   fileName: z.string().min(1).max(255),
   dataBase64: z.string().min(1).max(2_800_000, 'Resume file is too large (max 2 MB)'),
-  parsed: z.record(z.string(), z.unknown()).optional(),
+  parsed: z.record(z.string(), z.unknown()).optional().nullable(),
 });
 
 export type UploadResumeInput = z.infer<typeof uploadResumeSchema>;
