@@ -10,6 +10,7 @@ import {
   Download,
   Eye,
   FileCheck2,
+  Search,
   Sparkles,
   UploadCloud,
   X,
@@ -479,6 +480,9 @@ export function CandidateDashboard() {
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
 
   const [keywordFilters, setKeywordFilters] = useState<string[]>([]);
+  /* `searchDraft` is what the user types; `jobSearch` is the applied query,
+     committed only when the Search button is clicked or Enter is pressed. */
+  const [searchDraft, setSearchDraft] = useState('');
   const [jobSearch, setJobSearch] = useState('');
 
   /* Keyword boxes: curated job-market keywords plus anything derived from the
@@ -1014,29 +1018,41 @@ export function CandidateDashboard() {
         {view === 'jobs' && (
           <div className="space-y-4">
             <div className="rounded-xl border border-border bg-card p-3">
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-input bg-background px-2 py-1.5">
-                {keywordFilters.map((keyword) => (
-                  <button
-                    key={keyword}
-                    type="button"
-                    onClick={() =>
-                      setKeywordFilters((current) =>
-                        current.filter((item) => item !== keyword),
-                      )
-                    }
-                    className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground transition-transform active:scale-95"
-                  >
-                    {keyword}
-                    <X className="h-3 w-3" />
-                  </button>
-                ))}
-                <input
-                  value={jobSearch}
-                  onChange={(event) => setJobSearch(event.target.value)}
-                  placeholder="Search jobs by keyword…"
-                  className="h-7 min-w-[140px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                />
-              </div>
+              <form
+                className="flex flex-wrap items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setJobSearch(searchDraft.trim());
+                }}
+              >
+                <div className="flex min-w-[200px] flex-1 flex-wrap items-center gap-2 rounded-lg border border-input bg-background px-2 py-1.5">
+                  {keywordFilters.map((keyword) => (
+                    <button
+                      key={keyword}
+                      type="button"
+                      onClick={() =>
+                        setKeywordFilters((current) =>
+                          current.filter((item) => item !== keyword),
+                        )
+                      }
+                      className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground transition-transform active:scale-95"
+                    >
+                      {keyword}
+                      <X className="h-3 w-3" />
+                    </button>
+                  ))}
+                  <input
+                    value={searchDraft}
+                    onChange={(event) => setSearchDraft(event.target.value)}
+                    placeholder="Search jobs by keyword…"
+                    className="h-7 min-w-[140px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                  />
+                </div>
+                <Button type="submit" className="gap-1.5">
+                  <Search className="h-4 w-4" />
+                  Search
+                </Button>
+              </form>
               <div className="mt-2 flex flex-wrap gap-2">
                 {keywordOptions
                   .filter((keyword) => !keywordFilters.includes(keyword))

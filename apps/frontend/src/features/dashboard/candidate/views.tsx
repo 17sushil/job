@@ -1009,25 +1009,18 @@ export function JobsView({
   onToggleSave: (job: JobPosting) => void;
   onApply: (job: JobPosting) => void;
 }) {
-  const [query, setQuery] = useState('');
   const [workMode, setWorkMode] = useState<WorkMode | 'Any'>('Any');
   const [minMatch, setMinMatch] = useState(0);
   const [sort, setSort] = useState<'match' | 'recent' | 'salary'>('match');
 
+  /* Text search happens upstream (single search bar on the jobs view);
+     this card only applies the work-mode, match and sort controls. */
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
     const list = jobs
       .filter((job) =>
         workMode === 'Any' ? true : job.workMode === workMode,
       )
-      .filter((job) => job.match >= minMatch)
-      .filter((job) =>
-        q
-          ? `${job.title} ${job.company} ${job.location} ${job.matchedSkills.join(' ')}`
-              .toLowerCase()
-              .includes(q)
-          : true,
-      );
+      .filter((job) => job.match >= minMatch);
 
     return [...list].sort((a, b) => {
       if (sort === 'recent') return a.postedDaysAgo - b.postedDaysAgo;
@@ -1038,7 +1031,7 @@ export function JobsView({
       }
       return b.match - a.match;
     });
-  }, [jobs, query, workMode, minMatch, sort]);
+  }, [jobs, workMode, minMatch, sort]);
 
   return (
     <div className="space-y-5">
@@ -1051,16 +1044,6 @@ export function JobsView({
       </div>
 
       <div className="animate-fade-in-up space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
-        <div className="relative">
-          <Compass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by title, company, skill or city…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="w-full pl-9"
-          />
-        </div>
-
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1 rounded-xl bg-muted p-1">
             {(['Any', 'Remote', 'Hybrid', 'On-site'] as const).map((mode) => (
@@ -1121,7 +1104,6 @@ export function JobsView({
             <Button
               variant="outline"
               onClick={() => {
-                setQuery('');
                 setWorkMode('Any');
                 setMinMatch(0);
               }}
