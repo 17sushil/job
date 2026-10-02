@@ -45,7 +45,15 @@ import {
   triggerDownload,
   validateAtsUpload,
 } from './ats-service';
-import { resumePdf, type ResumeDocument } from './demo-resume-pdf';
+import {
+  flowToCanvas,
+  resumePdf,
+  resumePdfFromCanvas,
+  type CanvasDocument,
+  type CanvasTextObject,
+  type ResumeDocument,
+} from './demo-resume-pdf';
+import { loadDraft, saveDraft } from './edit-draft';
 import { ResumeEditor } from './resume-editor';
 import type { CandidateProfile } from './mock-data';
 
@@ -145,7 +153,7 @@ export function ResumeStudioView({
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ step: string; percent: number }>({ step: '', percent: 0 });
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<ResumeDocument | null>(null);
+  const [editing, setEditing] = useState<CanvasDocument | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
 
@@ -248,6 +256,7 @@ export function ResumeStudioView({
           engine: 'service',
           note: 'Data extracted by the ATS service and saved to your account.',
           document,
+          canvas: flowToCanvas(document),
         });
         setTab('preview');
         onNotify?.('Resume extracted and saved to your account.');
@@ -277,8 +286,32 @@ export function ResumeStudioView({
     if (editBusy) return;
     setError(null);
 
+    /* This session's canvas first, then the draft kept by the draft store so
+       an edit survives a reload; only then flow the parsed text onto pages. */
+    if (result?.canvas) {
+      setEditing(result.canvas);
+      return;
+    }
+    if (result) {
+      const stored = await loadDraft({
+        ...(result.jobId ? { jobId: result.jobId } : {}),
+        ...(result.fileName ? { fileName: result.fileName } : {}),
+      });
+      if (stored) {
+        setEditing(stored.canvas);
+        const { blob, pages } = resumePdfFromCanvas(stored.canvas);
+        onResultChange({
+          ...result,
+          blob,
+          pages,
+          canvas: stored.canvas,
+          note: 'Reopened from your saved edit — Download PDF matches what you edited.',
+        });
+        return;
+      }
+    }
     if (result?.document) {
-      setEditing(result.document);
+      setEditing(flowToCanvas(result.document));
       return;
     }
     if (!result?.parseUrl && !canParseResume()) {
@@ -295,7 +328,7 @@ export function ResumeStudioView({
         jobId: result?.jobId ?? null,
         rawFile: rawFileRef.current,
       });
-      setEditing(parsed);
+      setEditing(flowToCanvas(parsed));
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'Could not open the editor.');
     } finally {
@@ -303,10 +336,20 @@ export function ResumeStudioView({
     }
   }
 
-  function saveEdit(document: ResumeDocument) {
+  async function saveEdit(canvas: CanvasDocument) {
     try {
-      const { blob, pages } = resumePdf(document);
-      const slug = document.name
+      const { blob, pages } = resumePdfFromCanvas(canvas);
+      const stored = await saveDraft(canvas, {
+        ...(result?.jobId ? { jobId: result.jobId } : {}),
+        ...(result?.fileName ? { fileName: result.fileName } : {}),
+      });
+      const draftNote = stored.ok
+        ? ' Your edit JSON is saved and will reopen next time.'
+        : ` The edit JSON did not save: ${stored.reason}`;
+      const title = (canvas.pages[0]?.objects ?? []).find(
+        (object): object is CanvasTextObject => object.type === 'text',
+      );
+      const slug = (title?.text ?? result?.fileName ?? 'resume')
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
@@ -317,9 +360,12 @@ export function ResumeStudioView({
         pages,
         generatedAt: new Date().toISOString(),
         engine: result?.engine ?? 'demo',
-        note: 'Edited in the studio — this PDF was rendered from your edited text.',
+        note: `Edited in the studio — this PDF was rendered from your edited page.${draftNote}`,
         endpoint: result?.endpoint,
-        document,
+        jobId: result?.jobId,
+        parseUrl: result?.parseUrl,
+        document: result?.document,
+        canvas,
       });
       setEditing(null);
       setTab('preview');
@@ -810,7 +856,7 @@ export function ResumeStudioView({
       </section>
 
       {editing ? (
-        <ResumeEditor document={editing} onSave={saveEdit} onCancel={() => setEditing(null)} />
+        <ResumeEditor canvas={editing} onSave={saveEdit} onCancel={() => setEditing(null)} />
       ) : null}
     </div>
   );
