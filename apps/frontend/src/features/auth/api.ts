@@ -37,6 +37,7 @@ export interface UpdateProfilePayload {
   aboutCompany?: string | null;
   contactNumber?: string;
   avatar?: string;
+  parsedProfile?: string | null;
 }
 
 const jsonInit = (body: unknown): RequestInit => ({

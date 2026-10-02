@@ -35,6 +35,11 @@ export const updateProfileSchema = z
       .regex(/^[+]?[0-9\s()-]{7,15}$/, 'Enter a valid contact number')
       .optional(),
     avatar: z.string().max(400_000, 'Profile image is too large').optional(),
+    parsedProfile: z
+      .string()
+      .max(500_000, 'Saved resume data is too large')
+      .optional()
+      .nullable(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'Nothing to update',
