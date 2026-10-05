@@ -90,8 +90,12 @@ const initialsOf = (value: string) =>
     .join('')
     .toUpperCase() || 'JD';
 
-const daysSince = (iso: string) =>
-  Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+const daysSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+const hoursSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000));
+const formatPostedTime = (hours: number, days: number) => {
+  if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+  return days === 1 ? '1 day ago' : `${days} days ago`;
+};
 
 function mapLiveJob(job: JobRow): JobPosting {
   const metadata = job.metadata ?? {};
@@ -109,6 +113,8 @@ function mapLiveJob(job: JobRow): JobPosting {
     type: (str(metadata.employmentType) as JobPosting['type'] | null) ?? 'Full-time',
     salary: str(metadata.salary) ?? 'Negotiable',
     postedDaysAgo: daysSince(job.createdAt),
+    postedHoursAgo: hoursSince(job.createdAt),
+    postedTimeText: formatPostedTime(hoursSince(job.createdAt), daysSince(job.createdAt)),
     postedOn: new Date(job.createdAt).toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
@@ -360,61 +366,10 @@ export function CandidateDashboard() {
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
 
   const [keywordFilters, setKeywordFilters] = useState<string[]>([]);
-  const [jobSearch, setJobSearch] = useState('');
+  
 
   /* Keyword boxes: curated job-market keywords plus anything derived from the
      live job list; picking one adds it to the search box and filters the grid. */
-  const keywordOptions = useMemo(() => {
-    const DEFAULT_KEYWORDS = [
-      'Remote',
-      'Hybrid',
-      'On-site',
-      'Full-time',
-      'Part-time',
-      'Internship',
-      'Frontend',
-      'Backend',
-      'Full-stack',
-      'React',
-      'Node.js',
-      'TypeScript',
-      'Engineer',
-      'Designer',
-    ];
-    const derived = new Map<string, number>();
-    for (const job of jobs) {
-      const candidates = [
-        job.company,
-        job.location,
-        job.type,
-        job.workMode,
-        ...job.title.split(/\s+/),
-      ];
-      for (const raw of candidates) {
-        const clean = raw.trim();
-        if (clean.length < 3) continue;
-        derived.set(clean, (derived.get(clean) ?? 0) + 1);
-      }
-    }
-    const derivedSorted = [...derived.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([token]) => token);
-    return [...new Set([...derivedSorted, ...DEFAULT_KEYWORDS])].slice(0, 14);
-  }, [jobs]);
-
-  const filteredJobs = useMemo(() => {
-    const text = jobSearch.trim().toLowerCase();
-    return jobs.filter((job) => {
-      const haystack =
-        `${job.title} ${job.company} ${job.location} ${job.type} ${job.workMode} ${job.description}`.toLowerCase();
-      const keywordMatch = keywordFilters.every((keyword) =>
-        haystack.includes(keyword.toLowerCase()),
-      );
-      const textMatch = !text || haystack.includes(text);
-      return keywordMatch && textMatch;
-    });
-  }, [jobs, keywordFilters, jobSearch]);
-
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 4000);
@@ -476,14 +431,7 @@ export function CandidateDashboard() {
       hint: 'Open your applications',
       go: () => setView('applications'),
     },
-    {
-      label: 'Interviews scheduled',
-      value: upcomingInterviews.length,
-      delta: `Next: ${upcomingInterviews[0]?.date ?? 'book one'}`,
-      icon: CalendarCheck,
-      hint: 'Open your interview schedule',
-      go: () => setView('interviews'),
-    },
+    /* { label: 'Interviews scheduled' ... } */
     {
       label: 'Saved jobs',
       value: savedIds.length,
@@ -623,9 +571,7 @@ export function CandidateDashboard() {
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
               {greeting}, <span className="text-primary">{firstName}</span>
             </h1>
-            <p className="text-sm text-muted-foreground sm:text-base">
-              Here is where your search stands today.
-            </p>
+            
           </div>
 
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
@@ -893,47 +839,8 @@ export function CandidateDashboard() {
 
         {view === 'jobs' && (
           <div className="space-y-4">
-            <div className="rounded-xl border border-border bg-card p-3">
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-input bg-background px-2 py-1.5">
-                {keywordFilters.map((keyword) => (
-                  <button
-                    key={keyword}
-                    type="button"
-                    onClick={() =>
-                      setKeywordFilters((current) =>
-                        current.filter((item) => item !== keyword),
-                      )
-                    }
-                    className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground transition-transform active:scale-95"
-                  >
-                    {keyword}
-                    <X className="h-3 w-3" />
-                  </button>
-                ))}
-                <input
-                  value={jobSearch}
-                  onChange={(event) => setJobSearch(event.target.value)}
-                  placeholder="Search jobs by keyword…"
-                  className="h-7 min-w-[140px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                />
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {keywordOptions
-                  .filter((keyword) => !keywordFilters.includes(keyword))
-                  .map((keyword) => (
-                    <button
-                      key={keyword}
-                      type="button"
-                      onClick={() => setKeywordFilters((current) => [...current, keyword])}
-                      className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary-dark"
-                    >
-                      + {keyword}
-                    </button>
-                  ))}
-              </div>
-            </div>
             <JobsView
-              jobs={filteredJobs}
+              jobs={jobs}
               savedIds={savedIds}
               appliedJobIds={appliedJobIds}
               onOpenJob={setSelectedJob}
