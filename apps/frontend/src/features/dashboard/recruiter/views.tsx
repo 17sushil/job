@@ -397,6 +397,8 @@ export function JobsView({
       applicants: 0,
       views: 0,
       postedDaysAgo: 0,
+      postedHoursAgo: 0,
+      postedTimeText: '0 hours ago',
       postedOn: new Date().toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
@@ -651,51 +653,97 @@ export function ApplicantsView({
   const [query, setQuery] = useState('');
   const [scheduling, setScheduling] = useState<Applicant | null>(null);
 
+  const keywordOptions = useMemo(() => {
+    const DEFAULT_KEYWORDS = ['Frontend', 'Backend', 'Full-stack', 'React', 'Node.js', 'Java', 'Python', 'Designer'];
+    const derived = new Map<string, number>();
+    for (const app of applicants) {
+      const candidates = [app.job, ...(app.skills || [])];
+      for (const raw of candidates) {
+        if (!raw || typeof raw !== 'string') continue;
+        const kw = raw.trim();
+        if (kw.length < 2 || kw.length > 20) continue;
+        derived.set(kw, (derived.get(kw) ?? 0) + 1);
+      }
+    }
+    DEFAULT_KEYWORDS.forEach((kw) => derived.set(kw, (derived.get(kw) ?? 0) + 1));
+    return Array.from(derived.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map((entry) => entry[0])
+      .slice(0, 15);
+  }, [applicants]);
+
   const visible = useMemo(
-    () =>
-      applicants.filter(
+    () => {
+      const q = query.trim().toLowerCase();
+      return applicants.filter(
         (applicant) =>
           (statusFilter === 'All' || applicant.status === statusFilter) &&
           (!filterJob || applicant.job === filterJob) &&
-          applicant.name.toLowerCase().includes(query.toLowerCase()),
-      ),
+          (applicant.name.toLowerCase().includes(q) || 
+           (applicant.skills || []).some(s => s.toLowerCase().includes(q)) || 
+           (applicant.job || '').toLowerCase().includes(q))
+      );
+    },
     [applicants, statusFilter, filterJob, query],
   );
 
   return (
     <>
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="animate-fade-in-up text-xl font-bold">Applicants</h2>
-          <p className="text-sm text-muted-foreground">
-            {filterJob ? (
-              <>
-                Filtered to{' '}
-                <span className="font-semibold text-primary-dark">
-                  {filterJob}
-                </span>{' '}
-                <button
-                  type="button"
-                  onClick={onClearJobFilter}
-                  className="ml-1 underline underline-offset-2 hover:text-destructive"
-                >
-                  clear
-                </button>
-              </>
-            ) : (
-              `${applicants.length} people in your pipeline - click a name for details`
-            )}
-          </p>
+      <div className="animate-fade-in-up">
+        <h2 className="text-xl font-bold">Applicants</h2>
+        <p className="text-sm text-muted-foreground">
+          {filterJob ? (
+            <>
+              Filtered to <span className="font-semibold text-primary-dark">{filterJob}</span>{' '}
+              <button type="button" onClick={onClearJobFilter} className="ml-1 underline underline-offset-2 hover:text-destructive">
+                clear
+              </button>
+            </>
+          ) : (
+            `${applicants.length} people in your pipeline - click a name for details`
+          )}
+        </p>
+      </div>
+
+      <div className="animate-fade-in-up space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, role, or skill…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="w-full pl-9"
+            />
+          </div>
+          <Button 
+            type="button" 
+            variant="default" 
+            onClick={() => {
+              // search hit
+            }}
+          >
+            <Search className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Search</span>
+          </Button>
         </div>
-        <div className="relative w-full sm:w-56">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search applicants…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="pl-9"
-          />
+
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border w-full">
+          {keywordOptions
+            .map((keyword) => (
+              <button
+                key={keyword}
+                type="button"
+                onClick={() => {
+                  const newQuery = query ? `${query} ${keyword}` : keyword;
+                  setQuery(newQuery);
+                }}
+                className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary-dark"
+              >
+                + {keyword}
+              </button>
+            ))}
         </div>
       </div>
 
