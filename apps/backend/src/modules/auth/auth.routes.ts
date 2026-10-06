@@ -1,3 +1,4 @@
+import { saveCurrentResume } from '../resume/resume.controller.js';
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
 import { validate } from '../../middlewares/validate.js';
@@ -32,6 +33,7 @@ authRoutes.post('/verify-otp', validate(verifyOtpSchema), verifyOtp);
 authRoutes.get('/me', authMiddleware, getCurrentUser);
 authRoutes.post('/logout', authMiddleware, logoutUser);
 authRoutes.patch('/profile', authMiddleware, validate(updateProfileSchema), updateProfile);
+authRoutes.put('/resume/current', authMiddleware, saveCurrentResume);
 authRoutes.get('/resume', authMiddleware, getSavedResume);
 authRoutes.post('/resume', authMiddleware, validate(uploadResumeSchema), uploadResume);
 authRoutes.post('/resume/draft', authMiddleware, saveResumeDraft);

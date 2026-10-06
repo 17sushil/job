@@ -1837,13 +1837,15 @@ export function ProfileView({
     phone: string;
     expectedSalary: string;
     noticePeriod: string;
-  }) => void;
+  }) => Promise<void>;
   onAddSkill?: (skill: string) => void;
   onRemoveSkill?: (skill: string) => void;
   onAddExperience?: (entry: { role: string; company: string; period: string }) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [skillDraft, setSkillDraft] = useState('');
   const [expDraft, setExpDraft] = useState({ role: '', company: '', period: '' });
   const [form, setForm] = useState({
@@ -1860,12 +1862,19 @@ export function ProfileView({
   const circumference = 2 * Math.PI * radius;
   const dash = (percent / 100) * circumference;
 
-  function save(event: React.FormEvent) {
+  async function save(event: React.FormEvent) {
     event.preventDefault();
-    setEditing(false);
-    setSaved(true);
-    onSaveProfile?.(form);
-    window.setTimeout(() => setSaved(false), 2600);
+    if (profileSaving) return;
+    setProfileSaving(true);
+    setProfileError(null);
+    try {
+      await onSaveProfile?.(form);
+      setEditing(false);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2600);
+    } catch (problem) {
+      setProfileError(problem instanceof Error ? problem.message : 'Could not save the profile.');
+    } finally { setProfileSaving(false); }
   }
 
   function addSkill() {
@@ -1903,6 +1912,8 @@ export function ProfileView({
         </Button>
       </div>
 
+      {profileError && <p role="alert" className="text-sm text-destructive">{profileError}</p>}
+      {profileSaving && <p role="status" className="text-sm text-muted-foreground">Saving profile…</p>}
       {saved ? (
         <p className="animate-pop-in flex items-center gap-2 rounded-xl bg-success/10 p-3 text-sm font-semibold text-success">
           <Check className="h-4 w-4" />
@@ -2218,7 +2229,7 @@ export function ProfileView({
 
         {/* Side column */}
         <div className="space-y-4">
-          <SectionCard title="Profile strength" delay={100}>
+          <SectionCard title="Profile completeness" delay={100}>
             <div className="flex items-center gap-4">
               <svg viewBox="0 0 72 72" className="h-20 w-20 shrink-0 -rotate-90">
                 <circle
@@ -2515,7 +2526,7 @@ const FAQS = [
   },
   {
     q: 'Why do I get fewer replies than expected?',
-    a: 'In most cases the resume or the headline is the bottleneck, not the volume. Profiles above 90% strength with a tailored resume get roughly 3x more replies - the Insights tab names your biggest gap.',
+    a: 'In most cases the resume or the headline is the bottleneck, not the volume. Review your saved resume and profile for missing details before applying.',
   },
 ];
 
