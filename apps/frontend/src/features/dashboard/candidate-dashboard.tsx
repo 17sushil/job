@@ -882,15 +882,18 @@ export function CandidateDashboard() {
                     <FileCheck2 className="h-5 w-5" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">No ATS resume generated yet</p>
+                    <p className="text-sm font-semibold">
+                      {user?.resumeFileName ? 'Your saved resume is ready to open' : 'No ATS resume generated yet'}
+                    </p>
                     <p className="text-sm text-muted-foreground">
-                      Upload a PDF, DOCX or DOC and download a single-column, parser-safe
-                      version.
+                      {user?.resumeFileName
+                        ? 'Build resume will use your existing upload — no need to upload it again.'
+                        : 'Upload a PDF, DOCX or DOC and download a single-column, parser-safe version.'}
                     </p>
                   </div>
                   <Button onClick={() => setView('resume')}>
                     <UploadCloud className="h-4 w-4" />
-                    Upload resume
+                    {user?.resumeFileName ? 'Open saved resume' : 'Upload resume'}
                   </Button>
                 </div>
               )}

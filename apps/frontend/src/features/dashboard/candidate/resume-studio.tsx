@@ -142,9 +142,16 @@ export function ResumeStudioView({
   onNotify?: (message: string) => void;
   onSave: (next: CandidateProfile) => void;
 }) {
+  const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
   const inputRef = useRef<HTMLInputElement>(null);
   const rawFileRef = useRef<File | null>(null);
+  const fileRevision = useRef(0);
+  const resultRef = useRef(result);
+  resultRef.current = result;
+  const [restoring, setRestoring] = useState(Boolean(user?.resumeFileName));
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [restoreFailed, setRestoreFailed] = useState(false);
 
   const [tab, setTab] = useState<StudioTab>('preview');
   /* Local working copy; the Save button pushes it up (and to the database). */
@@ -163,6 +170,73 @@ export function ResumeStudioView({
   const [watermarkedUrl, setWatermarkedUrl] = useState<string | null>(null);
   const [showWatermarked, setShowWatermarked] = useState(false);
   const [watermarkedBusy, setWatermarkedBusy] = useState(false);
+
+  // The gate and studio share the database upload, not a browser File reference.
+  useEffect(() => {
+    if (!user?.id || !user.resumeFileName || rawFileRef.current) {
+      setRestoring(false);
+      return;
+    }
+    let cancelled = false;
+    const revision = fileRevision.current;
+    setRestoring(true);
+    setRestoreFailed(false);
+    const controller = new AbortController();
+    async function restoreUpload() {
+      try {
+        const response = await apiClient('/api/auth/resume', { signal: controller.signal });
+        if (!response.ok) throw new Error(await readApiError(response));
+        const body = await response.json() as { data: { resume: {
+          fileName: string;
+          dataBase64: string;
+          uploadedAt: string | null;
+          parsedProfile: Record<string, unknown> | null;
+        } | null } };
+        if (cancelled || revision !== fileRevision.current) return;
+        const saved = body.data.resume;
+        if (!saved) throw new Error('The saved resume file could not be found. Please replace it.');
+        const extension = saved.fileName.split('.').pop()?.toLowerCase();
+        const type = extension === 'pdf' ? 'application/pdf' : extension === 'docx'
+          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          : 'application/msword';
+        const bytes = Uint8Array.from(atob(saved.dataBase64), (char) => char.charCodeAt(0));
+        const original = new File([bytes], saved.fileName, { type });
+        const metadata = toUploadedFile(original);
+        if (!metadata) throw new Error('The saved resume format is not supported. Please replace it.');
+        onFileChange({ ...metadata, uploadedAt: saved.uploadedAt ?? metadata.uploadedAt });
+        if (!resultRef.current && saved.parsedProfile) {
+          // Saved edits may be canvas JSON instead of the initial ATS response.
+          const canvas = Array.isArray(saved.parsedProfile.pages) && saved.parsedProfile.assets
+            ? saved.parsedProfile as unknown as CanvasDocument : null;
+          const document = canvas ? undefined : toResumeDocument(saved.parsedProfile);
+          const rendered = canvas ? resumePdfFromCanvas(canvas) : resumePdf(document!);
+          onResultChange({
+            ...rendered,
+            fileName: `${saved.fileName.replace(/\.[^.]+$/, '')}-ats-resume.pdf`,
+            generatedAt: saved.uploadedAt ?? new Date().toISOString(),
+            engine: 'service',
+            note: 'Restored from your saved resume. No second upload needed.',
+            document,
+            canvas: canvas ?? flowToCanvas(document!),
+          });
+        }
+        rawFileRef.current = original;
+      } catch (problem) {
+        if (!cancelled && revision === fileRevision.current) {
+          setRestoreFailed(true);
+          setError(problem instanceof Error ? problem.message : 'Could not load your saved resume.');
+        }
+      } finally {
+        if (!cancelled) setRestoring(false);
+      }
+    }
+    void restoreUpload();
+    return () => { cancelled = true; controller.abort(); };
+  }, [user?.id, user?.resumeFileName, restoreAttempt, onFileChange, onResultChange]);
+
+  useEffect(() => {
+    return () => { if (watermarkedUrl) URL.revokeObjectURL(watermarkedUrl); };
+  }, [watermarkedUrl]);
 
   /* Keep the draft in step when the orchestrator re-hydrates the profile. */
   useEffect(() => {
@@ -207,6 +281,11 @@ export function ResumeStudioView({
       setError('Only PDF and Word files are supported. Export your resume to one of those first.');
       return;
     }
+    fileRevision.current += 1;
+    setRestoring(false);
+    setRestoreFailed(false);
+    setShowWatermarked(false);
+    setWatermarkedUrl(null);
     setError(null);
     onFileChange(uploaded);
     rawFileRef.current = candidate;
@@ -502,12 +581,18 @@ export function ResumeStudioView({
       <aside className="animate-fade-in-up space-y-3 self-start rounded-2xl border border-border bg-card p-4 shadow-sm">
         <h3 className="text-sm font-semibold">Your resume file</h3>
         <p className="text-xs text-muted-foreground">
-          {file
+          {restoring
+            ? 'Reusing the resume saved to your account.'
+            : file
             ? 'Already uploaded — PDF or Word, under 1 MB.'
             : 'Upload a PDF or Word file, under 1 MB.'}
         </p>
 
-        {file ? (
+        {restoring ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading your saved resume…
+          </p>
+        ) : file ? (
           <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light">
               <FileText className="h-5 w-5 text-primary-dark" />
@@ -524,7 +609,10 @@ export function ResumeStudioView({
               disabled={busy}
               className="text-destructive hover:bg-destructive/10"
               onClick={() => {
+                fileRevision.current += 1;
                 rawFileRef.current = null;
+                setShowWatermarked(false);
+                setWatermarkedUrl(null);
                 onFileChange(null);
                 onResultChange(null);
               }}
@@ -557,6 +645,16 @@ export function ResumeStudioView({
           </div>
         )}
 
+        {restoreFailed && (
+          <Button size="sm" variant="outline" onClick={() => setRestoreAttempt((value) => value + 1)}>
+            Retry loading saved resume
+          </Button>
+        )}
+        {file && !result && !restoring && !restoreFailed && (
+          <Button size="sm" disabled={busy} onClick={() => void extract(rawFileRef.current)}>
+            {busy ? 'Extracting…' : 'Extract saved resume'}
+          </Button>
+        )}
         {file && (
           <Button
             variant="outline"
@@ -662,7 +760,7 @@ export function ResumeStudioView({
                       size="sm"
                       variant="outline"
                       onClick={viewWatermarked}
-                      disabled={watermarkedBusy}
+                      disabled={watermarkedBusy || restoring || restoreFailed}
                     >
                       {watermarkedBusy ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />

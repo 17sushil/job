@@ -9,6 +9,7 @@ import {
   register,
   updateProfile,
   uploadResume,
+  getSavedResume,
   formatResumeProxy,
   saveResumeDraft,
   logSearchHistory,
@@ -31,6 +32,7 @@ authRoutes.post('/verify-otp', validate(verifyOtpSchema), verifyOtp);
 authRoutes.get('/me', authMiddleware, getCurrentUser);
 authRoutes.post('/logout', authMiddleware, logoutUser);
 authRoutes.patch('/profile', authMiddleware, validate(updateProfileSchema), updateProfile);
+authRoutes.get('/resume', authMiddleware, getSavedResume);
 authRoutes.post('/resume', authMiddleware, validate(uploadResumeSchema), uploadResume);
 authRoutes.post('/resume/draft', authMiddleware, saveResumeDraft);
 authRoutes.post('/format', authMiddleware, formatResumeProxy);
