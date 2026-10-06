@@ -1,4 +1,5 @@
 'use client';
+import { saveResumeDraftRequest } from '../../auth/api';
 
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -239,6 +240,10 @@ export function ResumeStudioView({
         };
       };
       setUser(body.data.user);
+      /* Ritik's version history: the parsed resume becomes v1. */
+      if (body.data.parsed) {
+        saveResumeDraftRequest(body.data.parsed).catch(() => {});
+      }
       setProgress({ step: 'Saved', percent: 100 });
       if (body.data.parsed) {
         const document = toResumeDocument(body.data.parsed);
@@ -326,6 +331,7 @@ export function ResumeStudioView({
       const parsed = await parseAtsResume({
         parseUrl: result?.parseUrl ?? null,
         jobId: result?.jobId ?? null,
+        parsedJson: (result as any)?.parsedJson ?? null,
         rawFile: rawFileRef.current,
       });
       setEditing(flowToCanvas(parsed));
@@ -343,6 +349,8 @@ export function ResumeStudioView({
         ...(result?.jobId ? { jobId: result.jobId } : {}),
         ...(result?.fileName ? { fileName: result.fileName } : {}),
       });
+      /* Version history: every saved edit becomes the next resume version. */
+      saveResumeDraftRequest(canvas as unknown as Record<string, unknown>).catch(() => {});
       const draftNote = stored.ok
         ? ' Your edit JSON is saved and will reopen next time.'
         : ` The edit JSON did not save: ${stored.reason}`;

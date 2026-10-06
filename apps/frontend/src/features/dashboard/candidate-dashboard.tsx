@@ -21,7 +21,7 @@ import { apiGet, apiPost, type JobRow } from '@/features/dashboard/shared';
 import { CandidateProfileGate } from '@/features/dashboard/candidate-profile-gate';
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
-import { updateProfileRequest } from '@/features/auth/api';
+import { logSearchKeywordRequest, updateProfileRequest } from '@/features/auth/api';
 import { useAuthStore } from '@/store/auth';
 
 import {
@@ -201,8 +201,12 @@ const initialsOf = (value: string) =>
     .join('')
     .toUpperCase() || 'JD';
 
-const daysSince = (iso: string) =>
-  Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+const daysSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+const hoursSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000));
+const formatPostedTime = (hours: number, days: number) => {
+  if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+  return days === 1 ? '1 day ago' : `${days} days ago`;
+};
 
 function mapLiveJob(job: JobRow): JobPosting {
   const metadata = job.metadata ?? {};
@@ -220,6 +224,8 @@ function mapLiveJob(job: JobRow): JobPosting {
     type: (str(metadata.employmentType) as JobPosting['type'] | null) ?? 'Full-time',
     salary: str(metadata.salary) ?? 'Negotiable',
     postedDaysAgo: daysSince(job.createdAt),
+    postedHoursAgo: hoursSince(job.createdAt),
+    postedTimeText: formatPostedTime(hoursSince(job.createdAt), daysSince(job.createdAt)),
     postedOn: new Date(job.createdAt).toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
@@ -491,8 +497,6 @@ export function CandidateDashboard() {
   const [searchDraft, setSearchDraft] = useState('');
   const [jobSearch, setJobSearch] = useState('');
 
-  /* Keyword boxes: curated job-market keywords plus anything derived from the
-     live job list; picking one adds it to the search box and filters the grid. */
   const keywordOptions = useMemo(() => {
     const DEFAULT_KEYWORDS = [
       'Remote',
@@ -544,6 +548,8 @@ export function CandidateDashboard() {
     });
   }, [jobs, keywordFilters, jobSearch]);
 
+  /* Keyword boxes: curated job-market keywords plus anything derived from the
+     live job list; picking one adds it to the search box and filters the grid. */
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 4000);
@@ -605,14 +611,7 @@ export function CandidateDashboard() {
       hint: 'Open your applications',
       go: () => setView('applications'),
     },
-    {
-      label: 'Interviews scheduled',
-      value: upcomingInterviews.length,
-      delta: `Next: ${upcomingInterviews[0]?.date ?? 'book one'}`,
-      icon: CalendarCheck,
-      hint: 'Open your interview schedule',
-      go: () => setView('interviews'),
-    },
+    /* { label: 'Interviews scheduled' ... } */
     {
       label: 'Saved jobs',
       value: savedIds.length,
@@ -752,9 +751,7 @@ export function CandidateDashboard() {
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
               {greeting}, <span className="text-primary">{firstName}</span>
             </h1>
-            <p className="text-sm text-muted-foreground sm:text-base">
-              Here is where your search stands today.
-            </p>
+            
           </div>
 
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
@@ -1028,7 +1025,9 @@ export function CandidateDashboard() {
                 className="flex flex-wrap items-center gap-2"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  setJobSearch(searchDraft.trim());
+                  const applied = searchDraft.trim();
+                  setJobSearch(applied);
+                  if (applied) logSearchKeywordRequest(applied).catch(() => {});
                 }}
               >
                 <div className="flex min-w-[200px] flex-1 flex-wrap items-center gap-2 rounded-lg border border-input bg-background px-2 py-1.5">
@@ -1066,7 +1065,10 @@ export function CandidateDashboard() {
                     <button
                       key={keyword}
                       type="button"
-                      onClick={() => setKeywordFilters((current) => [...current, keyword])}
+                      onClick={() => {
+                        setKeywordFilters((current) => [...current, keyword]);
+                        logSearchKeywordRequest(keyword).catch(() => {});
+                      }}
                       className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary-dark"
                     >
                       + {keyword}
