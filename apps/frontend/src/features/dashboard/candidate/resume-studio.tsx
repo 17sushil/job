@@ -45,6 +45,7 @@ import {
   toUploadedFile,
   triggerDownload,
   validateAtsUpload,
+  generateAtsResume,
 } from './ats-service';
 import {
   flowToCanvas,
@@ -157,6 +158,11 @@ export function ResumeStudioView({
   const [editing, setEditing] = useState<CanvasDocument | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  /* The watermarked ATS-friendly PDF the service returns from /v1/format/pdf —
+     viewable on demand, separate from our own rendered preview. */
+  const [watermarkedUrl, setWatermarkedUrl] = useState<string | null>(null);
+  const [showWatermarked, setShowWatermarked] = useState(false);
+  const [watermarkedBusy, setWatermarkedBusy] = useState(false);
 
   /* Keep the draft in step when the orchestrator re-hydrates the profile. */
   useEffect(() => {
@@ -380,6 +386,46 @@ export function ResumeStudioView({
       onNotify?.('Saved — use Download PDF for the new file.');
     } catch {
       setError('Could not render the edited resume. Your changes are still open in the editor.');
+    }
+  }
+
+  /** Generates (once per click) and toggles the watermarked ATS-friendly PDF
+   *  the service returns from /v1/format/pdf. */
+  async function viewWatermarked() {
+    if (watermarkedBusy) return;
+    if (showWatermarked) {
+      setShowWatermarked(false);
+      return;
+    }
+    const candidate = rawFileRef.current;
+    if (!candidate) {
+      setError('Upload a resume first to generate the watermarked ATS-friendly PDF.');
+      return;
+    }
+    const uploaded = toUploadedFile(candidate);
+    if (!uploaded) {
+      setError('That file type cannot be sent to the ATS service.');
+      return;
+    }
+    setWatermarkedBusy(true);
+    setError(null);
+    try {
+      const generated = await generateAtsResume({
+        file: uploaded,
+        profile: draft,
+        rawFile: candidate,
+      });
+      setWatermarkedUrl(URL.createObjectURL(generated.blob));
+      setShowWatermarked(true);
+      onNotify?.(
+        generated.engine === 'service'
+          ? 'Watermarked ATS-friendly PDF from the service is ready in the preview.'
+          : 'The service was unreachable — showing the in-browser ATS-friendly PDF instead.',
+      );
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : 'Could not generate the watermarked PDF.');
+    } finally {
+      setWatermarkedBusy(false);
     }
   }
 
@@ -612,6 +658,19 @@ export function ResumeStudioView({
                       {editBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
                       {editBusy ? 'Opening…' : 'Edit'}
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={viewWatermarked}
+                      disabled={watermarkedBusy}
+                    >
+                      {watermarkedBusy ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5" />
+                      )}
+                      {showWatermarked ? 'Hide watermarked' : 'Watermarked PDF'}
+                    </Button>
                     <Button size="sm" onClick={download}>
                       <Download className="h-3.5 w-3.5" />
                       Download PDF
@@ -619,6 +678,16 @@ export function ResumeStudioView({
                   </div>
                 )}
               </div>
+
+              {showWatermarked && watermarkedUrl ? (
+                <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
+                  <iframe
+                    title="Watermarked ATS-friendly resume from the service"
+                    src={`${watermarkedUrl}#toolbar=0&navpanes=0&statusbar=0&view=FitH`}
+                    className="h-[560px] w-full"
+                  />
+                </div>
+              ) : null}
 
               {result?.document ? (
                 <div className="max-h-[560px] overflow-y-auto rounded-2xl bg-muted/40 p-4 scrollbar-slim">
