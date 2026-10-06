@@ -2143,8 +2143,8 @@ export function ProfileView({
                   <GraduationCap className="h-3.5 w-3.5 text-primary" />
                   Education
                 </p>
-                {profile.education.map((entry) => (
-                  <div key={entry.degree}>
+                {profile.education.map((entry, index) => (
+                  <div key={`${entry.degree}-${entry.school}-${index}`}>
                     <p className="text-sm font-semibold">{entry.degree}</p>
                     <p className="text-xs text-muted-foreground">
                       {entry.school} · {entry.period}
