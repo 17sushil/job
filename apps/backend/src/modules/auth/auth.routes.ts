@@ -32,6 +32,8 @@ authRoutes.get('/me', authMiddleware, getCurrentUser);
 authRoutes.post('/logout', authMiddleware, logoutUser);
 authRoutes.patch('/profile', authMiddleware, validate(updateProfileSchema), updateProfile);
 authRoutes.post('/resume', authMiddleware, validate(uploadResumeSchema), uploadResume);
+authRoutes.post('/resume/draft', authMiddleware, saveResumeDraft);
+authRoutes.post('/format', authMiddleware, formatResumeProxy);
 authRoutes.post('/search-history', authMiddleware, logSearchHistory);
 authRoutes.post(
   '/change-password',

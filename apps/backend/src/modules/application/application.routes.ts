@@ -27,7 +27,7 @@ const listRecruiterApplicants: RequestHandler = async (req, res, next) => {
     const jobMap = new Map(jobs.map(j => [j.id, j.title]));
     
     // 2. Get all applications for those jobs
-    let applications = [];
+    let applications: Application[] = [];
     if (jobIds.length > 0) {
       applications = await appRepo.createQueryBuilder('app')
         .where('app.jobId IN (:...jobIds)', { jobIds })
@@ -43,22 +43,33 @@ const listRecruiterApplicants: RequestHandler = async (req, res, next) => {
       // Find if this candidate applied to any of our jobs
       const candidateApps = applications.filter(a => a.candidateId === candidate.userId);
       
-      let matchScore = 75;
-      let skills = [];
+      let skills: string[] = [];
       let experience = [];
       let education = 'Not specified';
       let summary = 'No summary provided.';
-      
+
       if (candidate.parsedProfile) {
         try {
-          const profile = JSON.parse(candidate.parsedProfile);
-          matchScore = profile.skills?.includes('React') ? 95 : 75;
-          skills = profile.skills || [];
+          /* parsedProfile is jsonb now: older rows may still hold JSON text. */
+          const profile: any =
+            typeof candidate.parsedProfile === 'string'
+              ? JSON.parse(candidate.parsedProfile)
+              : candidate.parsedProfile;
+          const rawSkills = profile?.raw_resume_data?.skills;
+          skills = Array.isArray(rawSkills)
+            ? rawSkills
+                .map((entry: unknown) =>
+                  typeof entry === 'string' ? entry : (entry as { name?: string })?.name,
+                )
+                .filter(Boolean)
+            : Array.isArray(profile?.skills)
+              ? profile.skills
+              : [];
           if (profile.experience && Array.isArray(profile.experience)) {
-            experience = profile.experience.map(e => ({
-              role: e.title || 'Role',
+            experience = profile.experience.map((e: any) => ({
+              role: e.title || e.role || 'Role',
               company: e.company || 'Company',
-              period: e.duration || 'Period'
+              period: e.duration || e.period || 'Period'
             }));
           }
           if (profile.education && Array.isArray(profile.education) && profile.education.length > 0) {
@@ -69,8 +80,6 @@ const listRecruiterApplicants: RequestHandler = async (req, res, next) => {
       
       const baseApplicant = {
         name: candidate.name || 'Unknown',
-        matchScore,
-        match: matchScore,
         email: candidate.email || '',
         phone: candidate.mobile || '',
         location: 'Remote',
@@ -83,8 +92,20 @@ const listRecruiterApplicants: RequestHandler = async (req, res, next) => {
       
       if (candidateApps.length > 0) {
         for (const app of candidateApps) {
+          /* Real match: how many of the candidate's extracted skills appear in
+             the job's title or description. No invented numbers. */
+          const job = jobs.find((entry) => entry.id === app.jobId);
+          const haystack = `${job?.title ?? ''} ${job?.description ?? ''}`.toLowerCase();
+          const matched = skills.filter((skill) =>
+            haystack.includes(String(skill).toLowerCase()),
+          ).length;
+          const matchScore = skills.length
+            ? Math.round((matched / skills.length) * 100)
+            : 0;
           applicants.push({
             ...baseApplicant,
+            matchScore,
+            match: matchScore,
             id: app.applicationId,
             jobId: app.jobId,
             job: jobMap.get(app.jobId) || 'Unknown Job',
@@ -96,6 +117,8 @@ const listRecruiterApplicants: RequestHandler = async (req, res, next) => {
         // Did not apply, but show as available
         applicants.push({
           ...baseApplicant,
+          matchScore: 0,
+          match: 0,
           id: candidate.userId, // use user id as unique key
           jobId: null,
           job: 'Available Candidate',

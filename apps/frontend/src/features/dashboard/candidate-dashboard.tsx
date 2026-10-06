@@ -10,6 +10,7 @@ import {
   Download,
   Eye,
   FileCheck2,
+  Search,
   Sparkles,
   UploadCloud,
   X,
@@ -20,6 +21,7 @@ import { apiGet, apiPost, type JobRow } from '@/features/dashboard/shared';
 import { CandidateProfileGate } from '@/features/dashboard/candidate-profile-gate';
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
+import { logSearchKeywordRequest, updateProfileRequest } from '@/features/auth/api';
 import { useAuthStore } from '@/store/auth';
 
 import {
@@ -64,13 +66,122 @@ import {
   StatusChip,
 } from './candidate/views';
 
-function parseStoredProfile(raw: string | null | undefined): Partial<CandidateProfile> {
+/* Accepts either our own Save format (CandidateProfile-shaped) or the raw JSON
+   the ATS extraction service returns (an envelope around JSON-Resume data),
+   and normalizes both into profile fields. */
+function parseStoredProfile(
+  raw: string | Record<string, unknown> | null | undefined,
+): Partial<CandidateProfile> {
   if (!raw) return {};
-  try {
-    return JSON.parse(raw) as Partial<CandidateProfile>;
-  } catch {
-    return {};
+  let parsed: unknown;
+  if (typeof raw === 'object') {
+    parsed = raw;
+  } else {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return {};
+    }
   }
+  if (!parsed || typeof parsed !== 'object') return {};
+  const envelope = parsed as Record<string, unknown>;
+  /* The extraction service wraps a JSON-Resume object in raw_resume_data. */
+  const resume =
+    envelope.raw_resume_data && typeof envelope.raw_resume_data === 'object'
+      ? (envelope.raw_resume_data as Record<string, unknown>)
+      : envelope;
+  const basics =
+    resume.basics && typeof resume.basics === 'object'
+      ? (resume.basics as Record<string, unknown>)
+      : {};
+  const levels = [envelope, resume, basics];
+
+  const str = (value: unknown) =>
+    typeof value === 'string' && value.trim() ? value.trim() : null;
+  const first = (keys: string[]) => {
+    for (const level of levels) {
+      for (const key of keys) {
+        const hit = str(level[key]);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  };
+
+  const out: Partial<CandidateProfile> = {};
+
+  const name = first(['name', 'candidate_name']);
+  if (name) out.name = name;
+  const headline = first(['headline', 'label', 'title', 'role']);
+  if (headline) out.headline = headline;
+  const about = first(['about', 'summary']);
+  if (about) out.about = about;
+  const email = first(['email']);
+  if (email) out.email = email;
+  const phone = first(['phone']);
+  if (phone) out.phone = phone;
+  const locationRaw =
+    first(['location']) ??
+    (basics.location && typeof basics.location === 'object'
+      ? str((basics.location as Record<string, unknown>).raw) ??
+        str((basics.location as Record<string, unknown>).city)
+      : null);
+  if (locationRaw) out.location = locationRaw;
+
+  /* skills: either string[] or [{ keywords: string[] }] (JSON Resume). */
+  if (Array.isArray(resume.skills)) {
+    const skills: string[] = [];
+    for (const item of resume.skills) {
+      if (typeof item === 'string') {
+        if (!skills.includes(item)) skills.push(item);
+      } else if (item && typeof item === 'object') {
+        const entry = item as Record<string, unknown>;
+        const keywords = Array.isArray(entry.keywords) ? entry.keywords : [];
+        for (const keyword of keywords) {
+          if (typeof keyword === 'string' && !skills.includes(keyword)) skills.push(keyword);
+        }
+        const single = str(entry.name);
+        if (single && single.toLowerCase() !== 'other' && !skills.includes(single)) {
+          skills.push(single);
+        }
+      }
+    }
+    if (skills.length > 0) out.skills = skills;
+  }
+
+  /* experience: our {role,company,period} or JSON Resume work entries. */
+  const workSource = Array.isArray(resume.experience)
+    ? resume.experience
+    : Array.isArray(resume.work)
+      ? resume.work
+      : null;
+  if (workSource) {
+    const experience = workSource
+      .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+      .map((entry) => ({
+        role: str(entry.role) ?? str(entry.position) ?? str(entry.title) ?? 'Role',
+        company: str(entry.company) ?? str(entry.name) ?? 'Company',
+        period: str(entry.period) ?? str(entry.datesRaw) ?? str(entry.duration) ?? '',
+        highlights: Array.isArray(entry.highlights)
+          ? entry.highlights.filter((h): h is string => typeof h === 'string')
+          : [],
+      }));
+    if (experience.length > 0) out.experience = experience;
+  }
+
+  /* education: our {degree,school,period} or JSON Resume education entries. */
+  if (Array.isArray(resume.education)) {
+    const education = (resume.education as unknown[])
+      .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+      .map((entry) => ({
+        degree: str(entry.degree) ?? str(entry.area) ?? str(entry.qualification) ?? 'Qualification',
+        school: str(entry.school) ?? str(entry.institution) ?? 'Institution',
+        period: str(entry.period) ?? str(entry.datesRaw) ?? str(entry.duration) ?? '',
+      }));
+    if (education.length > 0) out.education = education;
+  }
+
+  return out;
 }
 
 const LIVE_STATUS: Record<string, ApplicationStatus> = {
@@ -245,6 +356,7 @@ function countByStatus(applications: Application[]): Record<ApplicationStatus, n
 
 export function CandidateDashboard() {
   const user = useAuthStore((state) => state.user);
+  const setUser = useAuthStore((state) => state.setUser);
   const logout = useAuthStore((state) => state.logout);
 
   const [view, setView] = useState<CandidateView>('overview');
@@ -333,6 +445,20 @@ export function CandidateDashboard() {
     void loadLiveData();
   }, [loadLiveData]);
 
+  /* Build-resume Save: update session state AND persist the edited profile so
+     it survives reloads (stored as parsedProfile on the account). */
+  async function persistProfile(next: CandidateProfile) {
+    setProfile(next);
+    const serialized = JSON.stringify(next);
+    try {
+      await updateProfileRequest({ parsedProfile: serialized });
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser) setUser({ ...currentUser, parsedProfile: serialized });
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Could not save your resume');
+    }
+  }
+
   /* ATS resume: the uploaded file and the generated download live here so they
      survive switching views (the studio itself is unmounted on navigation). */
   const [atsFile, setAtsFile] = useState<AtsUploadedFile | null>(null);
@@ -366,7 +492,61 @@ export function CandidateDashboard() {
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null);
 
   const [keywordFilters, setKeywordFilters] = useState<string[]>([]);
-  
+  /* `searchDraft` is what the user types; `jobSearch` is the applied query,
+     committed only when the Search button is clicked or Enter is pressed. */
+  const [searchDraft, setSearchDraft] = useState('');
+  const [jobSearch, setJobSearch] = useState('');
+
+  const keywordOptions = useMemo(() => {
+    const DEFAULT_KEYWORDS = [
+      'Remote',
+      'Hybrid',
+      'On-site',
+      'Full-time',
+      'Part-time',
+      'Internship',
+      'Frontend',
+      'Backend',
+      'Full-stack',
+      'React',
+      'Node.js',
+      'TypeScript',
+      'Engineer',
+      'Designer',
+    ];
+    const derived = new Map<string, number>();
+    for (const job of jobs) {
+      const candidates = [
+        job.company,
+        job.location,
+        job.type,
+        job.workMode,
+        ...job.title.split(/\s+/),
+      ];
+      for (const raw of candidates) {
+        const clean = raw.trim();
+        if (clean.length < 3) continue;
+        derived.set(clean, (derived.get(clean) ?? 0) + 1);
+      }
+    }
+    const derivedSorted = [...derived.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([token]) => token);
+    return [...new Set([...derivedSorted, ...DEFAULT_KEYWORDS])].slice(0, 14);
+  }, [jobs]);
+
+  const filteredJobs = useMemo(() => {
+    const text = jobSearch.trim().toLowerCase();
+    return jobs.filter((job) => {
+      const haystack =
+        `${job.title} ${job.company} ${job.location} ${job.type} ${job.workMode} ${job.description}`.toLowerCase();
+      const keywordMatch = keywordFilters.every((keyword) =>
+        haystack.includes(keyword.toLowerCase()),
+      );
+      const textMatch = !text || haystack.includes(text);
+      return keywordMatch && textMatch;
+    });
+  }, [jobs, keywordFilters, jobSearch]);
 
   /* Keyword boxes: curated job-market keywords plus anything derived from the
      live job list; picking one adds it to the search box and filters the grid. */
@@ -834,11 +1014,68 @@ export function CandidateDashboard() {
             result={atsResult}
             onResultChange={setAtsResult}
             onNotify={setToast}
+            onSave={persistProfile}
           />
         )}
 
         {view === 'jobs' && (
           <div className="space-y-4">
+            <div className="rounded-xl border border-border bg-card p-3">
+              <form
+                className="flex flex-wrap items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const applied = searchDraft.trim();
+                  setJobSearch(applied);
+                  if (applied) logSearchKeywordRequest(applied).catch(() => {});
+                }}
+              >
+                <div className="flex min-w-[200px] flex-1 flex-wrap items-center gap-2 rounded-lg border border-input bg-background px-2 py-1.5">
+                  {keywordFilters.map((keyword) => (
+                    <button
+                      key={keyword}
+                      type="button"
+                      onClick={() =>
+                        setKeywordFilters((current) =>
+                          current.filter((item) => item !== keyword),
+                        )
+                      }
+                      className="flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground transition-transform active:scale-95"
+                    >
+                      {keyword}
+                      <X className="h-3 w-3" />
+                    </button>
+                  ))}
+                  <input
+                    value={searchDraft}
+                    onChange={(event) => setSearchDraft(event.target.value)}
+                    placeholder="Search jobs by keyword…"
+                    className="h-7 min-w-[140px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                  />
+                </div>
+                <Button type="submit" className="gap-1.5">
+                  <Search className="h-4 w-4" />
+                  Search
+                </Button>
+              </form>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {keywordOptions
+                  .filter((keyword) => !keywordFilters.includes(keyword))
+                  .map((keyword) => (
+                    <button
+                      key={keyword}
+                      type="button"
+                      onClick={() => {
+                        setKeywordFilters((current) => [...current, keyword]);
+                        logSearchKeywordRequest(keyword).catch(() => {});
+                      }}
+                      className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary-dark"
+                    >
+                      + {keyword}
+                    </button>
+                  ))}
+              </div>
+            </div>
             <JobsView
               jobs={jobs}
               savedIds={savedIds}
