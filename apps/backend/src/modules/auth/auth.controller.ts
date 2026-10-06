@@ -138,6 +138,34 @@ export const saveResumeDraft: RequestHandler = async (req, res, next) => {
   }
 };
 
+/** Return only the authenticated candidate's own saved upload. */
+export const getSavedResume: RequestHandler = async (req, res, next) => {
+  try {
+    const user = req.user!;
+    if (user.role.toLowerCase() !== 'candidate') {
+      throw new AppError(403, 'Only candidates can retrieve their resume');
+    }
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (!user.resumeFileName || !user.resumeData) {
+      res.json({ success: true, data: { resume: null } });
+      return;
+    }
+    res.json({
+      success: true,
+      data: {
+        resume: {
+          fileName: user.resumeFileName,
+          dataBase64: user.resumeData,
+          uploadedAt: user.resumeUploadedAt,
+          parsedProfile: user.parsedProfile,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const uploadResume: RequestHandler = async (req, res, next) => {
   try {
     if (req.user!.role.toLowerCase() !== 'candidate') {
