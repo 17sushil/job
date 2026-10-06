@@ -126,3 +126,25 @@ export const recruiterProfileIncomplete = (user: AuthUser | null) =>
 
 export const candidateProfileIncomplete = (user: AuthUser | null) =>
   !!user && user.role === 'candidate' && !user.resumeFileName;
+
+export async function logSearchKeywordRequest(keyword: string) {
+  return apiClient('/api/auth/search-history', {
+    method: 'POST',
+    ...jsonInit({ keyword }),
+  });
+}
+
+
+export async function formatResumeRequest(fileName: string, dataBase64: string) {
+  return apiClient('/api/auth/resume/format', {
+    method: 'POST',
+    ...jsonInit({ fileName, dataBase64 }),
+  });
+}
+
+export async function saveResumeDraftRequest(parsedJson: Record<string, unknown>) {
+  return apiClient('/api/auth/resume/draft', {
+    method: 'POST',
+    ...jsonInit({ parsedJson }),
+  });
+}

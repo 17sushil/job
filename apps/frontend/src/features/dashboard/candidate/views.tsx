@@ -1518,7 +1518,7 @@ export function JobDrawer({
 
           <section className="text-xs text-muted-foreground">
             Posted {job.postedOn} · {job.applicants} applicants so far ·{' '}
-            {job.postedDaysAgo}d ago
+            {job.postedTimeText}
           </section>
         </div>
 

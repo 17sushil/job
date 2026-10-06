@@ -15,6 +15,8 @@ export interface Job {
   applicants: number;
   views: number;
   postedDaysAgo: number;
+  postedHoursAgo: number;
+  postedTimeText: string;
   postedOn: string;
   statusChangedOn?: string;
   description?: string;
