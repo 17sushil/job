@@ -1,3 +1,4 @@
+import { hydratedCanvas } from '../resume/resume.controller.js';
 import { SearchHistory } from '../user/search-history.entity.js';
 import { AppDataSource } from '../../database/data-source.js';
 import { User } from '../user/user.entity.js';
@@ -94,18 +95,11 @@ export const formatResumeProxy: RequestHandler = async (req, res, next) => {
     
     const parsedJson = await pyRes.json();
     
-    // Save to ResumeVersions as v1
-    const repo = AppDataSource.getRepository(ResumeVersion);
-    const existingVersions = await repo.count({ where: { userId: req.user!.userId } });
-    
-    const version = repo.create({
-      userId: req.user!.userId,
-      version: existingVersions + 1,
-      profileData: parsedJson
+    await AppDataSource.transaction(async manager => {
+      await manager.delete(ResumeVersion, { userId: req.user!.userId });
+      await manager.getRepository(User).update(req.user!.userId, { parsedProfile: parsedJson });
     });
-    await repo.save(version);
-    
-    res.json({ success: true, data: { parsedJson, version: version.version } });
+    res.json({ success: true, data: { parsedJson } });
   } catch (error) {
     next(error);
   }
@@ -118,21 +112,43 @@ export const saveResumeDraft: RequestHandler = async (req, res, next) => {
     }
     const { parsedJson } = req.body;
     
-    const repo = AppDataSource.getRepository(ResumeVersion);
-    const existingVersions = await repo.count({ where: { userId: req.user!.userId } });
-    
-    const version = repo.create({
-      userId: req.user!.userId,
-      version: existingVersions + 1,
-      profileData: parsedJson
+    if (!parsedJson || typeof parsedJson !== 'object' || Array.isArray(parsedJson) || parsedJson.pages) {
+      throw new AppError(400, 'Canvas saves must use /api/auth/resume/current with the edited PDF.');
+    }
+    await AppDataSource.transaction(async manager => {
+      await manager.delete(ResumeVersion, { userId: req.user!.userId });
+      await manager.getRepository(User).update(req.user!.userId, { parsedProfile: parsedJson });
     });
-    await repo.save(version);
-    
-    // Update the main user parsedProfile so jobs can match
-    const userRepo = AppDataSource.getRepository(User);
-    await userRepo.update({ userId: req.user!.userId }, { parsedProfile: parsedJson });
-    
-    res.json({ success: true, data: { version: version.version } });
+    res.json({ success: true, data: { saved: true } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Return only the authenticated candidate's own saved upload. */
+export const getSavedResume: RequestHandler = async (req, res, next) => {
+  try {
+    const user = req.user!;
+    if (user.role.toLowerCase() !== 'candidate') {
+      throw new AppError(403, 'Only candidates can retrieve their resume');
+    }
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (!user.resumeFileName || (!user.resumeData && !user.resumePdf)) {
+      res.json({ success: true, data: { resume: null } });
+      return;
+    }
+    res.json({
+      success: true,
+      data: {
+        resume: {
+          fileName: user.resumeFileName,
+          dataBase64: user.resumePdf?.toString('base64') ?? user.resumeData,
+          canvas: await hydratedCanvas(user),
+          uploadedAt: user.resumeUploadedAt,
+          parsedProfile: user.parsedProfile,
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }

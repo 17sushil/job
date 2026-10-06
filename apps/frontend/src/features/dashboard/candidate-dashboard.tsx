@@ -1,4 +1,5 @@
 'use client';
+import { parseStoredProfile, profileChecklist } from './candidate/profile-data';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -38,8 +39,6 @@ import {
   type JobPosting,
   PIPELINE_ORDER,
   profileCompleteness,
-  PROFILE_CHECKLIST,
-  type ChecklistItem,
   type Notification,
 } from './candidate/mock-data';
 import { Sidebar as CandidateSidebar, type CandidateView } from './candidate/sidebar';
@@ -69,120 +68,6 @@ import {
 /* Accepts either our own Save format (CandidateProfile-shaped) or the raw JSON
    the ATS extraction service returns (an envelope around JSON-Resume data),
    and normalizes both into profile fields. */
-function parseStoredProfile(
-  raw: string | Record<string, unknown> | null | undefined,
-): Partial<CandidateProfile> {
-  if (!raw) return {};
-  let parsed: unknown;
-  if (typeof raw === 'object') {
-    parsed = raw;
-  } else {
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return {};
-    }
-  }
-  if (!parsed || typeof parsed !== 'object') return {};
-  const envelope = parsed as Record<string, unknown>;
-  /* The extraction service wraps a JSON-Resume object in raw_resume_data. */
-  const resume =
-    envelope.raw_resume_data && typeof envelope.raw_resume_data === 'object'
-      ? (envelope.raw_resume_data as Record<string, unknown>)
-      : envelope;
-  const basics =
-    resume.basics && typeof resume.basics === 'object'
-      ? (resume.basics as Record<string, unknown>)
-      : {};
-  const levels = [envelope, resume, basics];
-
-  const str = (value: unknown) =>
-    typeof value === 'string' && value.trim() ? value.trim() : null;
-  const first = (keys: string[]) => {
-    for (const level of levels) {
-      for (const key of keys) {
-        const hit = str(level[key]);
-        if (hit) return hit;
-      }
-    }
-    return null;
-  };
-
-  const out: Partial<CandidateProfile> = {};
-
-  const name = first(['name', 'candidate_name']);
-  if (name) out.name = name;
-  const headline = first(['headline', 'label', 'title', 'role']);
-  if (headline) out.headline = headline;
-  const about = first(['about', 'summary']);
-  if (about) out.about = about;
-  const email = first(['email']);
-  if (email) out.email = email;
-  const phone = first(['phone']);
-  if (phone) out.phone = phone;
-  const locationRaw =
-    first(['location']) ??
-    (basics.location && typeof basics.location === 'object'
-      ? str((basics.location as Record<string, unknown>).raw) ??
-        str((basics.location as Record<string, unknown>).city)
-      : null);
-  if (locationRaw) out.location = locationRaw;
-
-  /* skills: either string[] or [{ keywords: string[] }] (JSON Resume). */
-  if (Array.isArray(resume.skills)) {
-    const skills: string[] = [];
-    for (const item of resume.skills) {
-      if (typeof item === 'string') {
-        if (!skills.includes(item)) skills.push(item);
-      } else if (item && typeof item === 'object') {
-        const entry = item as Record<string, unknown>;
-        const keywords = Array.isArray(entry.keywords) ? entry.keywords : [];
-        for (const keyword of keywords) {
-          if (typeof keyword === 'string' && !skills.includes(keyword)) skills.push(keyword);
-        }
-        const single = str(entry.name);
-        if (single && single.toLowerCase() !== 'other' && !skills.includes(single)) {
-          skills.push(single);
-        }
-      }
-    }
-    if (skills.length > 0) out.skills = skills;
-  }
-
-  /* experience: our {role,company,period} or JSON Resume work entries. */
-  const workSource = Array.isArray(resume.experience)
-    ? resume.experience
-    : Array.isArray(resume.work)
-      ? resume.work
-      : null;
-  if (workSource) {
-    const experience = workSource
-      .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
-      .map((entry) => ({
-        role: str(entry.role) ?? str(entry.position) ?? str(entry.title) ?? 'Role',
-        company: str(entry.company) ?? str(entry.name) ?? 'Company',
-        period: str(entry.period) ?? str(entry.datesRaw) ?? str(entry.duration) ?? '',
-        highlights: Array.isArray(entry.highlights)
-          ? entry.highlights.filter((h): h is string => typeof h === 'string')
-          : [],
-      }));
-    if (experience.length > 0) out.experience = experience;
-  }
-
-  /* education: our {degree,school,period} or JSON Resume education entries. */
-  if (Array.isArray(resume.education)) {
-    const education = (resume.education as unknown[])
-      .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
-      .map((entry) => ({
-        degree: str(entry.degree) ?? str(entry.area) ?? str(entry.qualification) ?? 'Qualification',
-        school: str(entry.school) ?? str(entry.institution) ?? 'Institution',
-        period: str(entry.period) ?? str(entry.datesRaw) ?? str(entry.duration) ?? '',
-      }));
-    if (education.length > 0) out.education = education;
-  }
-
-  return out;
-}
 
 const LIVE_STATUS: Record<string, ApplicationStatus> = {
   NEW: 'Applied',
@@ -364,9 +249,6 @@ export function CandidateDashboard() {
   const [applications, setApplications] = useState<Application[]>(INITIAL_APPLICATIONS);
   const [savedIds, setSavedIds] = useState<string[]>(INITIAL_SAVED_IDS);
 
-  const [checklist, setChecklist] = useState<ChecklistItem[]>(() =>
-    PROFILE_CHECKLIST.map((item) => ({ ...item, done: false })),
-  );
   const [toast, setToast] = useState<string | null>(null);
 
   /* Profile mirrors the real account, enriched by the ATS-parsed resume when
@@ -397,28 +279,7 @@ export function CandidateDashboard() {
     });
   }, [user]);
 
-  /* Data-driven checklist signals track the real profile; references/video
-     stay manual because only the candidate knows about them. */
-  useEffect(() => {
-    setChecklist((current) =>
-      current.map((item) => {
-        switch (item.key) {
-          case 'links':
-            return { ...item, done: profile.links.length > 0 };
-          case 'education':
-            return { ...item, done: profile.education.length > 0 };
-          case 'salary':
-            return { ...item, done: Boolean(profile.expectedSalary) };
-          case 'phone':
-            return { ...item, done: Boolean(profile.phone) };
-          case 'workModes':
-            return { ...item, done: profile.workModes.length > 0 };
-          default:
-            return item;
-        }
-      }),
-    );
-  }, [profile]);
+  const checklist = useMemo(() => profileChecklist(profile), [profile]);
 
   /* Live data: jobs and applications come from the API, not mock data. */
   const loadLiveData = useCallback(async () => {
@@ -448,15 +309,11 @@ export function CandidateDashboard() {
   /* Build-resume Save: update session state AND persist the edited profile so
      it survives reloads (stored as parsedProfile on the account). */
   async function persistProfile(next: CandidateProfile) {
-    setProfile(next);
     const serialized = JSON.stringify(next);
-    try {
-      await updateProfileRequest({ parsedProfile: serialized });
-      const currentUser = useAuthStore.getState().user;
-      if (currentUser) setUser({ ...currentUser, parsedProfile: serialized });
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Could not save your resume');
-    }
+    await updateProfileRequest({ parsedProfile: serialized });
+    setProfile(next);
+    const currentUser = useAuthStore.getState().user;
+    if (currentUser) setUser({ ...currentUser, parsedProfile: serialized });
   }
 
   /* ATS resume: the uploaded file and the generated download live here so they
@@ -690,10 +547,9 @@ export function CandidateDashboard() {
   }
 
 
-  function toggleChecklistItem(key: string) {
-    setChecklist((current) =>
-      current.map((item) => (item.key === key ? { ...item, done: !item.done } : item)),
-    );
+  function toggleChecklistItem() {
+    // Completion is computed from saved fields, never manually checked off.
+    setView('profile');
   }
 
   function downloadAtsResume() {
@@ -882,15 +738,18 @@ export function CandidateDashboard() {
                     <FileCheck2 className="h-5 w-5" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">No ATS resume generated yet</p>
+                    <p className="text-sm font-semibold">
+                      {user?.resumeFileName ? 'Your saved resume is ready to open' : 'No ATS resume generated yet'}
+                    </p>
                     <p className="text-sm text-muted-foreground">
-                      Upload a PDF, DOCX or DOC and download a single-column, parser-safe
-                      version.
+                      {user?.resumeFileName
+                        ? 'Build resume will use your existing upload — no need to upload it again.'
+                        : 'Upload a PDF, DOCX or DOC and download a single-column, parser-safe version.'}
                     </p>
                   </div>
                   <Button onClick={() => setView('resume')}>
                     <UploadCloud className="h-4 w-4" />
-                    Upload resume
+                    {user?.resumeFileName ? 'Open saved resume' : 'Upload resume'}
                   </Button>
                 </div>
               )}
@@ -1100,29 +959,17 @@ export function CandidateDashboard() {
             atsFileName={atsResult?.fileName ?? null}
             onOpenResume={() => setView('resume')}
             onDownloadAts={downloadAtsResume}
-            onSaveProfile={(fields) => setProfile((current) => ({ ...current, ...fields }))}
-            onAddSkill={(skill) =>
-              setProfile((current) =>
-                current.skills.includes(skill)
-                  ? current
-                  : { ...current, skills: [...current.skills, skill] },
-              )
-            }
-            onRemoveSkill={(skill) =>
-              setProfile((current) => ({
-                ...current,
-                skills: current.skills.filter((item) => item !== skill),
-              }))
-            }
-            onAddExperience={(entry) =>
-              setProfile((current) => ({
-                ...current,
-                experience: [
-                  ...current.experience,
-                  { ...entry, highlights: [] },
-                ],
-              }))
-            }
+            onSaveProfile={(fields) => persistProfile({ ...profile, ...fields })}
+            onAddSkill={(skill) => {
+              if (!profile.skills.some(value => value.toLowerCase() === skill.toLowerCase()))
+                void persistProfile({ ...profile, skills: [...profile.skills, skill] }).catch(error => setToast(error.message));
+            }}
+            onRemoveSkill={(skill) => {
+              void persistProfile({ ...profile, skills: profile.skills.filter(value => value !== skill) }).catch(error => setToast(error.message));
+            }}
+            onAddExperience={(entry) => {
+              void persistProfile({ ...profile, experience: [...profile.experience, { ...entry, highlights: [] }] }).catch(error => setToast(error.message));
+            }}
           />
         )}
 

@@ -562,8 +562,12 @@ export function ResumeEditor({
   canvas,
   onSave,
   onCancel,
+  saving = false,
+  saveError,
 }: {
   canvas: CanvasDocument;
+  saving?: boolean;
+  saveError?: string | null;
   onSave: (canvas: CanvasDocument) => void;
   onCancel: () => void;
 }) {
@@ -1529,6 +1533,7 @@ export function ResumeEditor({
   }, [edit, selected]);
 
   const save = useCallback(() => {
+    if (saving) return;
     /* Safety net: nothing is ever lost off the bottom of a sheet. */
     const draft = clone(doc);
     const spilled = reflowDocument(draft, false);
@@ -1554,12 +1559,13 @@ export function ResumeEditor({
       for (const object of page.objects) delete (object as { flowOf?: string }).flowOf;
     }
     onSave(cleaned);
-  }, [doc, onSave]);
+  }, [doc, onSave, saving]);
 
   /* ------------------------------- shortcuts ------------------------------- */
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (saving) { event.preventDefault(); return; }
       const meta = event.ctrlKey || event.metaKey;
       const target = event.target as HTMLElement | null;
       const typing = Boolean(target?.isContentEditable) || target?.tagName === 'INPUT';
@@ -1636,6 +1642,7 @@ export function ResumeEditor({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     activePage,
+    saving,
     doc,
     duplicateSelection,
     editingId,
@@ -1664,6 +1671,7 @@ export function ResumeEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background">
+      {saving && <div role="status" aria-live="polite" className="absolute inset-0 z-[100] flex items-center justify-center bg-background/80"><p className="rounded-xl border border-border bg-card p-5 text-sm font-semibold">Saving your latest resume and updating profile fields…</p></div>}
       {/* ------------------------------- top bar ------------------------------ */}
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card px-4 py-2.5 shadow-sm">
         <div className="flex items-center gap-3">
@@ -2077,9 +2085,10 @@ export function ResumeEditor({
           </div>
 
           <div className="space-y-2 border-t border-border bg-card p-4">
-            <Button className="w-full" onClick={save} title="Save (Ctrl+S) — writes the PDF and saves your edit as JSON">
+            {saveError && <p role="alert" className="text-xs text-destructive">{saveError}</p>}
+            <Button className="w-full" disabled={saving || busy} onClick={save} title="Save (Ctrl+S) — writes the PDF and saves your edit as JSON">
               <Check className="h-4 w-4" />
-              Save changes
+              {saving ? 'Saving to your account…' : 'Save changes'}
             </Button>
             <Button
               variant="outline"

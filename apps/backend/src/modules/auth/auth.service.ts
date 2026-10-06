@@ -1,3 +1,5 @@
+import { AppDataSource } from '../../database/data-source.js';
+import { ResumeVersion } from '../user/resume-version.entity.js';
 import * as bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { AppError } from '../../common/errors/AppError.js';
@@ -231,16 +233,25 @@ export class AuthService {
       if (!taken) cvPhone = rawPhone;
     }
 
-    return this.userRepo.update(userId, {
-      resumeFileName: fileName,
-      resumeData: dataBase64,
-      resumeUploadedAt: new Date(),
-      parsedProfile: parsed ?? null,
-      /* Auto-fill the profile straight from the CV: name, email and phone
-         number come from the extracted basics when present and still free. */
-      ...(cvName ? { name: cvName } : {}),
-      ...(cvEmail ? { email: cvEmail } : {}),
-      ...(cvPhone ? { mobile: cvPhone } : {}),
+    return AppDataSource.transaction(async manager => {
+      const current = await manager.getRepository(User).findOne({ where: { userId }, lock: { mode: 'pessimistic_write' } });
+      if (!current) throw new AppError(404, 'User not found');
+      await manager.delete(ResumeVersion, { userId });
+      await manager.query('DELETE FROM resume_assets WHERE "userId" = $1', [userId]);
+      Object.assign(current, {
+        resumeCanvas: null,
+        resumePdf: null,
+        resumeFileName: fileName,
+        resumeData: dataBase64,
+        resumeUploadedAt: new Date(),
+        parsedProfile: parsed ?? null,
+        /* Auto-fill the profile straight from the CV: name, email and phone
+           number come from the extracted basics when present and still free. */
+        ...(cvName ? { name: cvName } : {}),
+        ...(cvEmail ? { email: cvEmail } : {}),
+        ...(cvPhone ? { mobile: cvPhone } : {}),
+      });
+      return manager.getRepository(User).save(current);
     });
   }
 }
