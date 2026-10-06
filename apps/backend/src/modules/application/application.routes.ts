@@ -35,7 +35,7 @@ const listRecruiterApplicants: RequestHandler = async (req, res, next) => {
     }
     
     // 3. Get ALL candidates
-    const allCandidates = await userRepo.find({ where: { role: UserRole.CANDIDATE } });
+    const allCandidates = await userRepo.find({ where: { role: UserRole.CANDIDATE, isDeleted: false } });
     
     const applicants = [];
     
@@ -51,34 +51,38 @@ const listRecruiterApplicants: RequestHandler = async (req, res, next) => {
       if (candidate.parsedProfile) {
         try {
           /* parsedProfile is jsonb now: older rows may still hold JSON text. */
-          const profile: any =
+          const envelope: any =
             typeof candidate.parsedProfile === 'string'
               ? JSON.parse(candidate.parsedProfile)
               : candidate.parsedProfile;
-          const rawSkills = profile?.raw_resume_data?.skills;
+          const profile = envelope.raw_resume_data ?? envelope;
+          const rawSkills = profile.skills;
+          summary = profile.basics?.summary ?? profile.about ?? profile.summary ?? '';
+
           skills = Array.isArray(rawSkills)
             ? rawSkills
-                .map((entry: unknown) =>
-                  typeof entry === 'string' ? entry : (entry as { name?: string })?.name,
-                )
+                .flatMap((entry: any) => typeof entry === 'string' ? [entry] : [...(entry.keywords ?? []), ...(entry.name && entry.name !== 'Other' ? [entry.name] : [])])
                 .filter(Boolean)
             : Array.isArray(profile?.skills)
               ? profile.skills
               : [];
+          profile.experience = profile.experience ?? profile.work;
           if (profile.experience && Array.isArray(profile.experience)) {
             experience = profile.experience.map((e: any) => ({
-              role: e.title || e.role || 'Role',
-              company: e.company || 'Company',
-              period: e.duration || e.period || 'Period'
+              role: e.title || e.role || e.position || '',
+              company: e.company || e.name || '',
+              period: e.duration || e.period || e.datesRaw || [e.startDate, e.endDate].filter(Boolean).join(' – ')
             }));
           }
           if (profile.education && Array.isArray(profile.education) && profile.education.length > 0) {
-            education = profile.education[0].institution || 'University';
+            education = profile.education[0].institution || profile.education[0].school || '';
           }
         } catch(e) {}
       }
       
       const baseApplicant = {
+        candidateId: candidate.userId,
+        appliedDaysAgo: 0,
         name: candidate.name || 'Unknown',
         email: candidate.email || '',
         phone: candidate.mobile || '',
@@ -87,7 +91,7 @@ const listRecruiterApplicants: RequestHandler = async (req, res, next) => {
         skills,
         experience,
         education,
-        resumeUrl: candidate.resumeFileName ? `/api/auth/resume/${candidate.resumeFileName}` : undefined
+        resumeUrl: candidate.resumeFileName ? `/api/candidates/${candidate.userId}/resume` : undefined
       };
       
       if (candidateApps.length > 0) {
@@ -110,6 +114,7 @@ const listRecruiterApplicants: RequestHandler = async (req, res, next) => {
             jobId: app.jobId,
             job: jobMap.get(app.jobId) || 'Unknown Job',
             appliedAt: app.createdAt.toISOString(),
+            appliedDaysAgo: Math.max(0, Math.floor((Date.now() - app.createdAt.getTime()) / 86400000)),
             status: app.status === 'NEW' ? 'New' : app.status
           });
         }

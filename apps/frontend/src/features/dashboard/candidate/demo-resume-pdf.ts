@@ -877,7 +877,7 @@ export function resumePdfFromCanvas(canvas: CanvasDocument): { blob: Blob; pages
   for (const [key, id] of Object.entries(fontIds)) {
     objects.push({
       id,
-      body: `<< /Type /Font /Subtype /Type1 /BaseFont ${CANVAS_FONT_FACES[key]} /Encoding /WinAnsiEncoding >>`,
+      body: `<< /Type /Font /Subtype /Type1 /BaseFont /${CANVAS_FONT_FACES[key]} /Encoding /WinAnsiEncoding >>`,
     });
   }
   for (const def of imageDefs) {
@@ -909,7 +909,7 @@ export function resumePdfFromCanvas(canvas: CanvasDocument): { blob: Blob; pages
     if (object.raw) {
       push(`${object.id} 0 obj\n${object.body}`);
       push(object.raw);
-      push('\nendobj\n');
+      push('\nendstream\nendobj\n');
     } else {
       push(`${object.id} 0 obj\n${object.body}\nendobj\n`);
     }
