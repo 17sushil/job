@@ -1161,7 +1161,7 @@ export function JobsView({
                     {job.location}
                   </span>
                   <span>{job.type}</span>
-                  <span>posted {job.postedDaysAgo}d ago</span>
+                  <span>posted {job.postedTimeText}</span>
                 </div>
 
                 <p className="mt-2 text-sm font-semibold">
@@ -1448,10 +1448,13 @@ export function JobDrawer({
             <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               About the role
             </p>
-            <p className="text-sm text-muted-foreground">{job.description}</p>
+            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{job.description}</p>
           </section>
 
-          <section>
+          {job.minimumQualifications && <section><h4 className="mb-1.5 font-semibold">Minimum qualifications</h4><p className="whitespace-pre-wrap text-sm text-muted-foreground">{job.minimumQualifications}</p></section>}
+          {job.preferredQualifications && <section><h4 className="mb-1.5 font-semibold">Preferred qualifications</h4><p className="whitespace-pre-wrap text-sm text-muted-foreground">{job.preferredQualifications}</p></section>}
+
+          {job.requirements.length > 0 && <section>
             <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               Requirements
             </p>
@@ -1463,7 +1466,7 @@ export function JobDrawer({
                 </li>
               ))}
             </ul>
-          </section>
+          </section>}
 
           <section>
             <button

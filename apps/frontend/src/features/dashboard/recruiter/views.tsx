@@ -26,6 +26,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useSession, useSetSession } from '@/features/auth/queries';
@@ -124,8 +125,9 @@ function MatchBar({ value }: { value: number }) {
 interface DrawerProps {
   applicant: Applicant | null;
   onClose: () => void;
-  onSetStatus: (id: string, status: ApplicantStatus) => void;
-  onScheduleInterview: (id: string, dateLabel: string) => void;
+  onSetStatus?: (id: string, status: ApplicantStatus) => void;
+  onScheduleInterview?: (id: string, dateLabel: string) => void;
+  profileOnly?: boolean;
 }
 
 export function ApplicantDrawer({
@@ -133,6 +135,7 @@ export function ApplicantDrawer({
   onClose,
   onSetStatus,
   onScheduleInterview,
+  profileOnly = false,
 }: DrawerProps) {
   const [scheduling, setScheduling] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
@@ -201,7 +204,7 @@ export function ApplicantDrawer({
               <p className="text-sm text-white/80">{applicant.job}</p>
               <div className="mt-1.5">
                 <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold backdrop-blur">
-                  {applicant.status}
+                  {profileOnly ? 'Viewed profile' : applicant.status}
                 </span>
               </div>
             </div>
@@ -211,16 +214,16 @@ export function ApplicantDrawer({
         <div className="flex-1 space-y-5 p-6">
           {/* Contact */}
           <section className="space-y-2 text-sm">
-            <p className="flex items-center gap-2 text-muted-foreground">
+            {applicant.email && <p className="flex items-center gap-2 text-muted-foreground">
               <Mail className="h-4 w-4 text-primary" /> {applicant.email}
-            </p>
-            <p className="flex items-center gap-2 text-muted-foreground">
+            </p>}
+            {applicant.phone && <p className="flex items-center gap-2 text-muted-foreground">
               <Phone className="h-4 w-4 text-primary" /> {applicant.phone}
-            </p>
-            <p className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="h-4 w-4 text-primary" /> {applicant.location} ·
-              applied {applicant.appliedDaysAgo}d ago
-            </p>
+            </p>}
+            {(applicant.location || !profileOnly) && <p className="flex items-center gap-2 text-muted-foreground">
+              <MapPin className="h-4 w-4 text-primary" /> {applicant.location}{!profileOnly && ' · '}
+              {!profileOnly && <>applied {applicant.appliedDaysAgo}d ago</>}
+            </p>}
           </section>
 
           {applicant.scheduledDate && (
@@ -230,21 +233,21 @@ export function ApplicantDrawer({
             </p>
           )}
 
-          <section>
+          {!profileOnly && <section>
             <div className="mb-1 flex items-center justify-between text-sm">
               <span className="font-semibold">ATS match score</span>
               <MatchBar value={applicant.match} />
             </div>
-          </section>
+          </section>}
 
-          <section>
+          {applicant.summary && <section>
             <h4 className="mb-1.5 text-sm font-bold">Summary</h4>
             <p className="text-sm leading-relaxed text-muted-foreground">
               {applicant.summary}
             </p>
-          </section>
+          </section>}
 
-          <section>
+          {applicant.skills.length > 0 && <section>
             <h4 className="mb-2 text-sm font-bold">Skills</h4>
             <div className="flex flex-wrap gap-1.5">
               {applicant.skills.map((skill) => (
@@ -256,9 +259,9 @@ export function ApplicantDrawer({
                 </span>
               ))}
             </div>
-          </section>
+          </section>}
 
-          <section>
+          {applicant.experience.length > 0 && <section>
             <h4 className="mb-2 text-sm font-bold">Experience</h4>
             <ul className="space-y-2.5">
               {applicant.experience.map((entry) => (
@@ -273,14 +276,14 @@ export function ApplicantDrawer({
                 </li>
               ))}
             </ul>
-          </section>
+          </section>}
 
-          <section>
+          {applicant.education && <section>
             <h4 className="mb-1.5 flex items-center gap-2 text-sm font-bold">
               <GraduationCap className="h-4 w-4 text-primary" /> Education
             </h4>
             <p className="text-sm text-muted-foreground">{applicant.education}</p>
-          </section>
+          </section>}
 
           <section>
             <h4 className="mb-1.5 font-semibold">Resume / CV</h4>
@@ -295,12 +298,12 @@ export function ApplicantDrawer({
         {/* Workflow actions per stage:
             New = Shortlist/Reject, Shortlisted = Interview/Reject,
             Interview = Hire/Reschedule/Reject, Hired/Rejected = terminal. */}
-        <div className="sticky bottom-0 flex gap-2 border-t border-border bg-card p-4">
+        {!profileOnly && <div className="sticky bottom-0 flex gap-2 border-t border-border bg-card p-4">
           {applicant.status === 'New' && (
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => onSetStatus(applicant.id, 'Shortlisted')}
+              onClick={() => onSetStatus?.(applicant.id, 'Shortlisted')}
             >
               <Check className="h-4 w-4" />
               Shortlist
@@ -316,7 +319,7 @@ export function ApplicantDrawer({
             <>
               <Button
                 className="flex-1"
-                onClick={() => onSetStatus(applicant.id, 'Hired')}
+                onClick={() => onSetStatus?.(applicant.id, 'Hired')}
               >
                 <BadgeCheck className="h-4 w-4" />
                 Hire
@@ -337,7 +340,7 @@ export function ApplicantDrawer({
             <Button
               variant="ghost"
               className="flex-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => onSetStatus(applicant.id, 'Rejected')}
+              onClick={() => onSetStatus?.(applicant.id, 'Rejected')}
             >
               <X className="h-4 w-4" />
               Reject
@@ -351,7 +354,7 @@ export function ApplicantDrawer({
                 : 'Rejected. Use the reopen action on the list to reconsider.'}
             </p>
           )}
-        </div>
+        </div>}
       </aside>
 
       {scheduling && (
@@ -359,7 +362,7 @@ export function ApplicantDrawer({
           name={applicant.name}
           onClose={() => setScheduling(false)}
           onPick={(label) => {
-            onScheduleInterview(applicant.id, label);
+            onScheduleInterview?.(applicant.id, label);
             setScheduling(false);
           }}
         />
@@ -376,11 +379,15 @@ const EMPTY_FORM = {
   location: '',
   type: 'Full-time',
   salary: '',
+  description: '',
+  minimumQualifications: '',
+  preferredQualifications: '',
 };
 
 interface JobsViewProps {
   jobs: Job[];
-  onAdd: (job: Job) => void;
+  onAdd: (job: Job) => Promise<void>;
+  posting: boolean;
   onSetStatus: (id: string, status: JobStatus) => void;
   onViewApplicants: (jobTitle: string) => void;
   onOpenJob: (job: Job) => void;
@@ -390,6 +397,7 @@ interface JobsViewProps {
 export function JobsView({
   jobs,
   onAdd,
+  posting,
   onSetStatus,
   onViewApplicants,
   onOpenJob,
@@ -402,16 +410,19 @@ export function JobsView({
     if (openSignal > 0) setOpen(true);
   }, [openSignal]);
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!form.title.trim()) return;
-    onAdd({
+    if (posting || !form.title.trim() || !form.description.trim() || !form.minimumQualifications.trim()) return;
+    try { await onAdd({
       id: `job-${Date.now()}`,
       title: form.title.trim(),
       department: form.department,
       location: form.location.trim() || 'Remote',
       type: form.type as Job['type'],
       salary: form.salary.trim() || 'Negotiable',
+      description: form.description.trim(),
+      minimumQualifications: form.minimumQualifications.trim(),
+      preferredQualifications: form.preferredQualifications.trim(),
       status: 'Active',
       applicants: 0,
       views: 0,
@@ -423,7 +434,7 @@ export function JobsView({
         day: 'numeric',
         year: 'numeric',
       }),
-    });
+    }); } catch { return; } // Keep the full draft open after a failed mutation.
     setForm(EMPTY_FORM);
     setOpen(false);
   }
@@ -497,7 +508,7 @@ export function JobsView({
             />
           </div>
           <div>
-            <Label htmlFor="job-salary">Salary range</Label>
+            <Label htmlFor="job-salary">Minimum salary or range (Optional)</Label>
             <Input
               id="job-salary"
               placeholder="Rs 80k–120k"
@@ -506,9 +517,21 @@ export function JobsView({
             />
           </div>
           <div className="sm:col-span-2">
-            <Button type="submit" className="w-full">
+            <Label htmlFor="job-desc">Job description</Label>
+            <Textarea id="job-desc" placeholder="What will this person do on a day-to-day basis?" value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} className="min-h-[80px]" required maxLength={20000} />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="job-min-qual">Minimum qualifications</Label>
+            <Textarea id="job-min-qual" placeholder="e.g. Bachelors degree, 3+ years experience" value={form.minimumQualifications} onChange={event => setForm({ ...form, minimumQualifications: event.target.value })} className="min-h-[80px]" required maxLength={12000} />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="job-pref-qual">Preferred qualifications (Optional)</Label>
+            <Textarea id="job-pref-qual" placeholder="e.g. React Query experience is a plus" value={form.preferredQualifications} onChange={event => setForm({ ...form, preferredQualifications: event.target.value })} className="min-h-[80px]"  maxLength={12000} />
+          </div>
+          <div className="sm:col-span-2">
+            <Button type="submit" className="w-full" disabled={posting}>
               <Briefcase className="h-4 w-4" />
-              Publish job post
+              {posting ? 'Publishing…' : 'Publish job post'}
             </Button>
           </div>
         </form>
@@ -1477,6 +1500,9 @@ export function JobDrawer({
               {job.description ?? 'No description provided for this posting yet.'}
             </p>
           </section>
+
+          {job.minimumQualifications && <section><h4 className="mb-1.5 font-semibold">Minimum qualifications</h4><p className="whitespace-pre-wrap text-sm text-muted-foreground">{job.minimumQualifications}</p></section>}
+          {job.preferredQualifications && <section><h4 className="mb-1.5 font-semibold">Preferred qualifications</h4><p className="whitespace-pre-wrap text-sm text-muted-foreground">{job.preferredQualifications}</p></section>}
 
           {job.requirements && job.requirements.length > 0 && (
             <section>

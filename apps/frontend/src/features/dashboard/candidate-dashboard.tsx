@@ -22,7 +22,7 @@ import {
   logSearchKeywordRequest,
   updateProfileRequest,
 } from '@/features/auth/api';
-import { useSession, useSetSession } from '@/features/auth/queries';
+import { useAccountQuery, useSession, useSetSession } from '@/features/auth/queries';
 import { CandidateProfileGate } from '@/features/dashboard/candidate-profile-gate';
 import { apiGet, apiPost, type JobRow } from '@/features/dashboard/shared';
 import { useCountUp } from '@/lib/use-count-up';
@@ -126,6 +126,8 @@ function mapLiveJob(job: JobRow): JobPosting {
     missingSkills: [],
     reasons: [],
     description: job.description ?? '',
+    minimumQualifications: str(metadata.minimumQualifications) ?? '',
+    preferredQualifications: str(metadata.preferredQualifications) ?? '',
     requirements: [],
   };
 }
@@ -255,6 +257,7 @@ export function CandidateDashboard() {
   const client = useQueryClient();
   const jobsKey = ['account', user?.id, 'jobs'];
   const applicationsKey = ['account', user?.id, 'applications'];
+  const profileViewsQuery = useAccountQuery<{ totalViews: number }>('/api/candidates/views/me');
   const jobsQuery = useQuery({ queryKey: jobsKey, enabled: !!user,
     queryFn: async ({ signal }) => (await apiGet<{ jobs: JobRow[] }>('/api/jobs', signal)).jobs.map(mapLiveJob) });
   const applicationsQuery = useQuery({ queryKey: applicationsKey, enabled: !!user,
@@ -336,7 +339,7 @@ export function CandidateDashboard() {
     const text = jobSearch.trim().toLowerCase();
     return jobs.filter((job) => {
       const haystack =
-        `${job.title} ${job.company} ${job.location} ${job.type} ${job.workMode} ${job.description}`.toLowerCase();
+        `${job.title} ${job.company} ${job.location} ${job.type} ${job.workMode} ${job.description} ${job.minimumQualifications ?? ''} ${job.preferredQualifications ?? ''}`.toLowerCase();
       const keywordMatch = keywordFilters.every((keyword) =>
         haystack.includes(keyword.toLowerCase()),
       );
@@ -416,7 +419,7 @@ export function CandidateDashboard() {
     },
     {
       label: 'Profile views',
-      value: 0,
+      value: profileViewsQuery.data?.totalViews ?? 0,
       delta: `Profile ${completeness}% complete`,
       icon: Eye,
       hint: 'Open your profile',
@@ -526,8 +529,8 @@ export function CandidateDashboard() {
       />
 
       <main className="min-w-0 flex-1 space-y-4">
-        {(jobsQuery.isPending || applicationsQuery.isPending) && <p role="status" className="text-sm text-muted-foreground">Loading dashboard data…</p>}
-        {(jobsQuery.error || applicationsQuery.error) && <div role="alert" className="text-sm text-destructive">{(jobsQuery.error ?? applicationsQuery.error)?.message} <button onClick={() => { void jobsQuery.refetch(); void applicationsQuery.refetch(); }}>Retry</button></div>}
+        {(jobsQuery.isPending || applicationsQuery.isPending || profileViewsQuery.isPending) && <p role="status" className="text-sm text-muted-foreground">Loading dashboard data…</p>}
+        {(jobsQuery.error || applicationsQuery.error || profileViewsQuery.error) && <div role="alert" className="text-sm text-destructive">{(jobsQuery.error ?? applicationsQuery.error ?? profileViewsQuery.error)?.message} <button onClick={() => { void jobsQuery.refetch(); void applicationsQuery.refetch(); void profileViewsQuery.refetch(); }}>Retry</button></div>}
         {/* Greeting + global actions */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="animate-fade-in-up">

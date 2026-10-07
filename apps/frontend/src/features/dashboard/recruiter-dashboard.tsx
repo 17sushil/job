@@ -16,6 +16,7 @@ import {
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
 
+import { ViewedCandidatesView, ViewedCandidateDrawer, useRecordProfileView } from './recruiter/viewed-candidates';
 import { ApplicationsChart } from './recruiter/charts';
 import {
   INITIAL_JOBS,
@@ -58,6 +59,9 @@ function mapApiJob(row: JobRow): Job {
     department: str(metadata.department) ?? '',
     location: row.location ?? 'Remote',
     type,
+    description: row.description ?? '',
+    minimumQualifications: str(metadata.minimumQualifications) ?? '',
+    preferredQualifications: str(metadata.preferredQualifications) ?? '',
     salary: str(metadata.salary) ?? 'Negotiable',
     status: row.status === 'paused' ? 'Paused' : row.status === 'closed' ? 'Closed' : 'Active',
     applicants: 0,
@@ -178,6 +182,16 @@ export function RecruiterDashboard() {
   const [postJobSignal, setPostJobSignal] = useState(0);
   const [selectedApplicant, setSelectedApplicant] =
     useState<Applicant | null>(null);
+  const recordView = useRecordProfileView();
+  const [viewedCandidateId, setViewedCandidateId] = useState<string | null>(null);
+  const openApplicant = (applicant: Applicant) => {
+    setSelectedApplicant(applicant);
+    if (applicant.candidateId) recordView.mutate(applicant.candidateId);
+  };
+  const openViewedCandidate = (candidateId: string) => {
+    setViewedCandidateId(candidateId);
+    recordView.mutate(candidateId);
+  };
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
   const firstName =
@@ -241,6 +255,8 @@ export function RecruiterDashboard() {
         department: job.department || null,
         employmentType: job.type,
         salary: job.salary || null,
+        minimumQualifications: job.minimumQualifications || null,
+        preferredQualifications: job.preferredQualifications || null,
       });
       /* Saved job rows power the candidate side too - their keyword chips
          derive from these posts automatically. */
@@ -250,6 +266,7 @@ export function RecruiterDashboard() {
         title: error instanceof Error ? error.message : 'Could not post the job',
         variant: 'destructive',
       });
+      throw error;
     }
   }
 
@@ -521,7 +538,7 @@ export function RecruiterDashboard() {
                     >
                       <button
                         type="button"
-                        onClick={() => setSelectedApplicant(applicant)}
+                        onClick={() => openApplicant(applicant)}
                         className="flex w-full items-center gap-3 rounded-lg p-1 text-left transition-colors hover:bg-primary-light"
                       >
                         <Avatar name={applicant.name} />
@@ -601,6 +618,7 @@ export function RecruiterDashboard() {
           <JobsView
             jobs={jobs}
             onAdd={addJob}
+            posting={createJob.isPending}
             onSetStatus={setJobStatus}
             onViewApplicants={viewApplicantsFor}
             onOpenJob={setSelectedJob}
@@ -608,13 +626,16 @@ export function RecruiterDashboard() {
           />
         )}
 
+        {view === 'harvested' && <ViewedCandidatesView onOpenProfile={openViewedCandidate} />}
+        {viewedCandidateId && <ViewedCandidateDrawer candidateId={viewedCandidateId} onClose={() => setViewedCandidateId(null)} />}
+
         {view === 'applicants' && (
           <ApplicantsView
             applicants={applicants}
             onSetStatus={setApplicantStatus}
             filterJob={jobFilter}
             onClearJobFilter={() => setJobFilter(null)}
-            onOpen={setSelectedApplicant}
+            onOpen={openApplicant}
             statusFilter={statusFilter}
             onStatusFilterChange={setStatusFilter}
             onScheduleInterview={scheduleInterview}
