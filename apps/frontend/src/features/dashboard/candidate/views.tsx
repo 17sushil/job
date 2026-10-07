@@ -1014,13 +1014,6 @@ export function JobsView({
   const [minMatch, setMinMatch] = useState(0);
   const [sort, setSort] = useState<'match' | 'recent' | 'salary'>('match');
   const [keywordFilters, setKeywordFilters] = useState<string[]>([]);
-  useEffect(() => {
-    if (!query.trim()) return;
-    const timeoutId = setTimeout(() => {
-      logSearchKeywordRequest(query.trim()).catch(() => {});
-    }, 1000);
-    return () => clearTimeout(timeoutId);
-  }, [query]);
   const keywordOptions = useMemo(() => {
     const DEFAULT_KEYWORDS = ['Frontend', 'Backend', 'Full-stack', 'React', 'Node.js', 'TypeScript', 'Engineer', 'Designer'];
     const derived = new Map<string, number>();
@@ -1134,9 +1127,7 @@ export function JobsView({
                 key={keyword}
                 type="button"
                 onClick={() => {
-                  const newQuery = query ? `${query} ${keyword}` : keyword;
-                  setQuery(newQuery);
-                  logSearchKeywordRequest(keyword).catch(() => {});
+                  setKeywordFilters([...keywordFilters, keyword]);
                 }}
                 className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary-dark"
               >

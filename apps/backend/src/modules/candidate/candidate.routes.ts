@@ -6,6 +6,7 @@ import {
   getCandidate,
   listCandidates,
   softDeleteCandidate,
+  getProfileViews,
 } from './candidate.controller.js';
 
 export const candidateRoutes = Router();
@@ -16,6 +17,7 @@ candidateRoutes.use(
 );
 
 candidateRoutes.get('/', listCandidates);
+candidateRoutes.get('/views', getProfileViews);
 candidateRoutes.get('/:id/resume', recruiterResume);
 candidateRoutes.get('/:id', getCandidate);
 candidateRoutes.delete(

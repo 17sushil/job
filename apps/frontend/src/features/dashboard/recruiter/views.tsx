@@ -27,6 +27,7 @@ import {
 import { SourcesDonut, WeeklyBars } from './charts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { apiClient } from '@/lib/api-client';
@@ -139,6 +140,13 @@ export function ApplicantDrawer({
   const [resumeUrl, setResumeUrl] = useState<string | null>(null);
   const [resumeError, setResumeError] = useState<string | null>(null);
   useEffect(() => { setResumeOpen(false); }, [applicant?.id]);
+
+  useEffect(() => {
+    if (applicant?.candidateId) {
+      apiClient(`/api/candidates/${applicant.candidateId}`).catch(() => {});
+    }
+  }, [applicant?.candidateId]);
+
   useEffect(() => {
     setResumeUrl(null);
     setResumeError(null);
@@ -387,6 +395,9 @@ const EMPTY_FORM = {
   location: '',
   type: 'Full-time',
   salary: '',
+  description: '',
+  minimumQualifications: '',
+  preferredQualifications: '',
 };
 
 interface JobsViewProps {
@@ -423,6 +434,9 @@ export function JobsView({
       location: form.location.trim() || 'Remote',
       type: form.type as Job['type'],
       salary: form.salary.trim() || 'Negotiable',
+      description: form.description,
+      minimumQualifications: form.minimumQualifications,
+      preferredQualifications: form.preferredQualifications,
       status: 'Active',
       applicants: 0,
       views: 0,
@@ -508,12 +522,44 @@ export function JobsView({
             />
           </div>
           <div>
-            <Label htmlFor="job-salary">Salary range</Label>
+            <Label htmlFor="job-salary">Minimum salary or range (Optional)</Label>
             <Input
               id="job-salary"
               placeholder="Rs 80k–120k"
               value={form.salary}
               onChange={(event) => setForm({ ...form, salary: event.target.value })}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="job-desc">Job description</Label>
+            <Textarea
+              id="job-desc"
+              placeholder="What will this person do on a day-to-day basis?"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              className="min-h-[100px]"
+              required
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="job-min-qual">Minimum qualifications</Label>
+            <Textarea
+              id="job-min-qual"
+              placeholder="e.g. Bachelors degree, 3+ years experience"
+              value={form.minimumQualifications}
+              onChange={(e) => setForm({ ...form, minimumQualifications: e.target.value })}
+              className="min-h-[80px]"
+              required
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="job-pref-qual">Preferred qualifications (Optional)</Label>
+            <Textarea
+              id="job-pref-qual"
+              placeholder="e.g. React Query experience is a plus"
+              value={form.preferredQualifications}
+              onChange={(e) => setForm({ ...form, preferredQualifications: e.target.value })}
+              className="min-h-[80px]"
             />
           </div>
           <div className="sm:col-span-2">
@@ -1560,6 +1606,62 @@ export function AnalyticsView() {
           <h3 className="mb-3 text-sm font-semibold">Applicant sources</h3>
           <SourcesDonut slices={SOURCES} />
         </div>
+      </div>
+    </div>
+  );
+}
+export function HarvestedCandidatesView({ onOpenProfile }: { onOpenProfile?: (candidate: any) => void }) {
+  const [data, setData] = useState<any>(null);
+  useEffect(() => {
+    apiClient('/api/candidates/views')
+      .then((res: Response) => res.json())
+      .then((json: any) => { if (json.success) setData(json.data); })
+      .catch(console.error);
+  }, []);
+
+  return (
+    <div className="space-y-6 animate-fade-in-up">
+      <div>
+        <h2 className="text-xl font-bold">Viewed Candidates</h2>
+        <p className="text-sm text-muted-foreground">
+          You have viewed {data?.totalViews || 0} candidate profiles.
+        </p>
+      </div>
+      <div className="space-y-3">
+        {!data && <p>Loading...</p>}
+        {data?.views?.length === 0 && (
+          <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-sm">
+            <h3 className="font-semibold">No views yet</h3>
+            <p className="text-sm text-muted-foreground">Candidates you view will appear here.</p>
+          </div>
+        )}
+        {data?.views?.map((view: any) => (
+          <div key={view.id} className="flex items-center justify-between rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div>
+              <p className="font-semibold">{view.candidateName}</p>
+              <p className="text-sm text-muted-foreground">Viewed on {view.viewedAt ? new Date(view.viewedAt).toLocaleDateString() : 'Unknown Date'}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => {
+              if (onOpenProfile) {
+                onOpenProfile({
+                  id: view.candidateId,
+                  candidateId: view.candidateId,
+                  name: view.candidateName || 'Unknown',
+                  email: view.candidateEmail || '',
+                  phone: '',
+                  location: 'Remote',
+                  job: 'Harvested Profile',
+                  status: 'Harvested',
+                  appliedDaysAgo: 0,
+                  skills: [],
+                  experience: [],
+                  education: '',
+                  resumeUrl: `/api/candidates/${view.candidateId}/resume`
+                });
+              }
+            }}>View Profile</Button>
+          </div>
+        ))}
       </div>
     </div>
   );

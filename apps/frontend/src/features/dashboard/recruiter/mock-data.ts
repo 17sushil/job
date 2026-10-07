@@ -11,6 +11,8 @@ export interface Job {
   location: string;
   type: 'Full-time' | 'Part-time' | 'Contract' | 'Internship';
   salary: string;
+  minimumQualifications?: string;
+  preferredQualifications?: string;
   status: JobStatus;
   applicants: number;
   views: number;

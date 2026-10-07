@@ -34,6 +34,7 @@ import {
 import { Sidebar, type RecruiterView } from './recruiter/sidebar';
 import {
   AnalyticsView,
+  HarvestedCandidatesView,
   ApplicantDrawer,
   ApplicantsView,
   Avatar,
@@ -636,6 +637,7 @@ export function RecruiterDashboard() {
           />
         )}
 
+        {view === 'harvested' && <HarvestedCandidatesView onOpenProfile={setSelectedApplicant as any} />}
         {view === 'applicants' && (
           <ApplicantsView
             applicants={applicants}

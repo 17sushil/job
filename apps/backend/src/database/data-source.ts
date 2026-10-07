@@ -7,11 +7,12 @@ import { SearchHistory } from '../modules/user/search-history.entity.js';
 import { ResumeVersion } from '../modules/user/resume-version.entity.js';
 import { Job } from '../modules/job/job.entity.js';
 import { Application } from '../modules/application/application.entity.js';
+import { ProfileView } from '../modules/candidate/profile-view.entity.js';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: env.DATABASE_URL,
-  entities: [User, Job, Application, SearchHistory, ResumeVersion],
+  entities: [User, Job, Application, SearchHistory, ResumeVersion, ProfileView],
   migrations: [path.join(__dirname, 'migrations', '*{.ts,.js}')],
   /* Additive migrations only — boot-time run keeps every environment
      (laptop, Render, fresh clones) schema-current with zero manual steps. */
