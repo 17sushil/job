@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -42,6 +42,7 @@ export default function DashboardLayout({
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
   const clearUser = useAuthStore((state) => state.logout);
+  const logoutPending = useRef(false);
   const [checking, setChecking] = useState(true);
   const [mounted, setMounted] = useState(false);
 
@@ -53,12 +54,6 @@ export default function DashboardLayout({
 
   useEffect(() => {
     const handleUnauthorized = () => {
-      const state = useAuthStore.getState();
-      // A fresh session handoff (just after OTP) may race this event; the
-      // verifySession fallback already trusts it, so never bounce in that case.
-      if (state.user && state.token) {
-        return;
-      }
       clearUser();
       toast({
         title: 'Session ended. Please log in again.',
@@ -84,23 +79,11 @@ export default function DashboardLayout({
           return;
         }
 
-        // /me rejected the session. If we just handed off a fresh session
-        // (user + token already in the store from signup/login OTP), trust
-        // it instead of bouncing to the login page.
-        const state = useAuthStore.getState();
-        if (state.user && state.token) {
-          setChecking(false);
-          return;
-        }
-
+        clearUser();
         router.replace('/login');
       } catch {
         if (!active) return;
-        const state = useAuthStore.getState();
-        if (state.user && state.token) {
-          setChecking(false);
-          return;
-        }
+        clearUser();
         toast({
           title: 'Not authenticated. Please log in again.',
           variant: 'destructive',
@@ -113,17 +96,27 @@ export default function DashboardLayout({
     return () => {
       active = false;
     };
-  }, [router, setUser]);
+  }, [router, setUser, clearUser]);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
+    if (logoutPending.current) return;
+    logoutPending.current = true;
     try {
-      await logoutRequest();
-    } finally {
+      const response = await logoutRequest();
+      if (!response.ok && response.status !== 401) throw new Error('Logout failed');
       clearUser();
       toast({ title: 'Logged out', variant: 'success' });
       router.replace('/login');
-    }
-  };
+    } catch {
+      toast({ title: 'Could not complete logout. Please retry.', variant: 'destructive' });
+    } finally { logoutPending.current = false; }
+  }, [clearUser, router]);
+
+  useEffect(() => {
+    const logout = () => { void handleLogout(); };
+    window.addEventListener('jobdev:logout', logout);
+    return () => window.removeEventListener('jobdev:logout', logout);
+  }, [handleLogout]);
 
   if (!mounted || checking || !user) {
     return (

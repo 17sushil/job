@@ -1131,7 +1131,8 @@ export function SettingsView() {
   const [prefs, setPrefs] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_PREFS;
     try {
-      const raw = window.localStorage.getItem(PREFS_KEY);
+      const encoded = document.cookie.split('; ').find(part => part.startsWith(`${PREFS_KEY}=`))?.slice(PREFS_KEY.length + 1);
+      const raw = encoded ? decodeURIComponent(encoded) : null;
       if (raw) return { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<typeof DEFAULT_PREFS>) };
     } catch {
       /* fall back to defaults */
@@ -1145,7 +1146,7 @@ export function SettingsView() {
 
   function save() {
     try {
-      window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+      document.cookie = `${PREFS_KEY}=${encodeURIComponent(JSON.stringify(prefs))}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
     } catch {
       /* storage may be unavailable; the in-memory values still apply */
     }

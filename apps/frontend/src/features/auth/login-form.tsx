@@ -94,8 +94,8 @@ export function LoginForm() {
         notice="Enter the OTP for"
         backLabel="Back to password"
         onBack={() => setStep('credentials')}
-        onVerified={(user, token) => {
-          setSession(user, token);
+        onVerified={(user) => {
+          setSession(user);
           toast({ title: 'Logged in successfully', variant: 'success' });
           router.push('/dashboard');
         }}
@@ -133,7 +133,7 @@ export function LoginForm() {
         </Button>
       </form>
 
-      <div className="space-y-2">
+      {process.env.NODE_ENV !== 'production' && <div className="space-y-2">
         <p className="section-label text-center">Quick test accounts</p>
         <div className="grid grid-cols-2 gap-2">
           {TEST_ACCOUNTS.map(({ icon: Icon, role, email, password: pw }) => (
@@ -162,7 +162,7 @@ export function LoginForm() {
         <p className="text-center text-[11px] text-muted-foreground">
           Click one to fill the form. OTP for testing: <strong>123456</strong>
         </p>
-      </div>
+      </div>}
     </div>
   );
 }

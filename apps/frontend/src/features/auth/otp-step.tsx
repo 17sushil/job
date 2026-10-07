@@ -12,7 +12,7 @@ import { readApiError, verifyOtpRequest, type AuthUser } from '@/features/auth/a
 interface OtpStepProps {
   identifier: string;
   notice: string;
-  onVerified: (user: AuthUser, token: string) => void;
+  onVerified: (user: AuthUser) => void;
   onBack: () => void;
   backLabel: string;
 }
@@ -50,7 +50,7 @@ export function OtpStep({
       }
 
       const body = await res.json();
-      onVerified(body.data.user as AuthUser, body.data.token as string);
+      onVerified(body.data.user as AuthUser);
     } catch {
       toast({ title: 'Network error. Please try again.', variant: 'destructive' });
     } finally {
@@ -63,8 +63,8 @@ export function OtpStep({
       <div className="flex items-center gap-2 rounded-lg border border-border bg-primary-light px-3 py-2.5 text-sm text-primary-dark">
         <KeyRound className="h-4 w-4 shrink-0" />
         <span>
-          {notice} <strong>{identifier}</strong>. For testing, use{' '}
-          <strong>123456</strong>.
+          {notice} <strong>{identifier}</strong>.
+          {process.env.NODE_ENV !== 'production' && <> For testing, use <strong>123456</strong>.</>}
         </span>
       </div>
 
@@ -77,7 +77,7 @@ export function OtpStep({
           maxLength={6}
           value={otp}
           onChange={(event) => setOtp(event.target.value.replace(/\D/g, ''))}
-          placeholder="123456"
+          placeholder="Enter 6-digit code"
           className="text-center text-lg tracking-[0.5em]"
           autoComplete="one-time-code"
         />

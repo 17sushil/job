@@ -1,3 +1,4 @@
+import { serviceRequest } from '../../common/http.js';
 import { hydratedCanvas } from '../resume/resume.controller.js';
 import { SearchHistory } from '../user/search-history.entity.js';
 import { AppDataSource } from '../../database/data-source.js';
@@ -46,7 +47,7 @@ export const verifyOtp: RequestHandler = async (req, res, next) => {
       .cookie(COOKIE_NAME, signSession(user), cookieOptions())
       .json({
         success: true,
-        data: { user: toSafeUser(user), token: signSession(user) },
+        data: { user: toSafeUser(user) },
       });
   } catch (error) {
     next(error);
@@ -83,7 +84,7 @@ export const formatResumeProxy: RequestHandler = async (req, res, next) => {
     }
     const ATS_API_KEY = env.ATS_API_KEY;
     
-    const pyRes = await fetch(ATS_ENDPOINT, {
+    const pyRes = await serviceRequest(ATS_ENDPOINT, {
       method: 'POST',
       headers: { 'X-API-Key': ATS_API_KEY },
       body: formData
@@ -171,7 +172,7 @@ export const uploadResume: RequestHandler = async (req, res, next) => {
         const form = new FormData();
         form.append('file', new Blob([buffer], { type: 'application/pdf' }), fileName);
         form.append('max_pages', String(env.ATS_MAX_PAGES));
-        const atsRes = await fetch(`${env.ATS_ENDPOINT}/v1/format`, {
+        const atsRes = await serviceRequest(`${env.ATS_ENDPOINT}/v1/format`, {
           method: 'POST',
           headers: { 'X-API-Key': env.ATS_API_KEY },
           body: form,
@@ -206,17 +207,22 @@ export const uploadResume: RequestHandler = async (req, res, next) => {
 export const changePassword: RequestHandler = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    await authService.changePassword(req.user!.userId, currentPassword, newPassword);
+    const user = await authService.changePassword(req.user!.userId, currentPassword, newPassword);
+    if (!user) throw new AppError(401, 'Session ended');
+    res.cookie(COOKIE_NAME, signSession(user), cookieOptions());
     res.json({ success: true, data: { message: 'Password changed' } });
   } catch (error) {
     next(error);
   }
 };
 
-export const logoutUser: RequestHandler = async (_req, res) => {
-  res
-    .clearCookie(COOKIE_NAME, { ...cookieOptions(), maxAge: undefined })
-    .json({ success: true, data: { message: 'Logged out' } });
+export const logoutUser: RequestHandler = async (req, res, next) => {
+  try {
+    // Invalidate copies of the old cookie, not just this browser's cookie jar.
+    await AppDataSource.getRepository(User).increment({ userId: req.user!.userId }, 'sessionVersion', 1);
+    res.clearCookie(COOKIE_NAME, { ...cookieOptions(), maxAge: undefined })
+      .json({ success: true, data: { message: 'Logged out' } });
+  } catch (error) { next(error); }
 };
 
 export const updateProfile: RequestHandler = async (req, res, next) => {

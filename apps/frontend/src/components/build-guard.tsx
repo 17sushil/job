@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
+import { apiClient } from '@/lib/api-client';
+import { clearLegacyStorage } from '@/lib/clear-legacy-storage';
 
 /**
  * Dev-preview self-heal: client chunks remember the build id of the page
@@ -17,10 +19,11 @@ const BIRTH_BUILD =
 
 export function BuildGuard() {
   useEffect(() => {
+    clearLegacyStorage();
     if (!BIRTH_BUILD) return;
 
     let cancelled = false;
-    fetch('/buildcheck', { cache: 'no-store' })
+    apiClient('/buildcheck', { cache: 'no-store' })
       .then((res) => res.json())
       .then((body: { id?: string }) => {
         if (!cancelled && body.id && body.id !== BIRTH_BUILD) {

@@ -22,7 +22,7 @@ import { apiGet, apiPost, type JobRow } from '@/features/dashboard/shared';
 import { CandidateProfileGate } from '@/features/dashboard/candidate-profile-gate';
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
-import { logSearchKeywordRequest, updateProfileRequest } from '@/features/auth/api';
+import { logSearchKeywordRequest, readApiError, updateProfileRequest } from '@/features/auth/api';
 import { useAuthStore } from '@/store/auth';
 
 import {
@@ -242,7 +242,6 @@ function countByStatus(applications: Application[]): Record<ApplicationStatus, n
 export function CandidateDashboard() {
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
-  const logout = useAuthStore((state) => state.logout);
 
   const [view, setView] = useState<CandidateView>('overview');
   const [jobs, setJobs] = useState<JobPosting[]>(INITIAL_JOBS);
@@ -310,7 +309,8 @@ export function CandidateDashboard() {
      it survives reloads (stored as parsedProfile on the account). */
   async function persistProfile(next: CandidateProfile) {
     const serialized = JSON.stringify(next);
-    await updateProfileRequest({ parsedProfile: serialized });
+    const response = await updateProfileRequest({ parsedProfile: serialized });
+    if (!response.ok) throw new Error(await readApiError(response));
     setProfile(next);
     const currentUser = useAuthStore.getState().user;
     if (currentUser) setUser({ ...currentUser, parsedProfile: serialized });
@@ -321,28 +321,8 @@ export function CandidateDashboard() {
   const [atsFile, setAtsFile] = useState<AtsUploadedFile | null>(null);
   const [atsResult, setAtsResult] = useState<AtsGenerationResult | null>(null);
 
-  /* Notifications persist in localStorage so read state survives reloads. */
-  const [notifications, setNotifications] = useState<Notification[]>(() => {
-    if (typeof window === 'undefined') return INITIAL_NOTIFICATIONS;
-    try {
-      const raw = window.localStorage.getItem('jobdev-candidate-notifications');
-      if (raw) return JSON.parse(raw) as Notification[];
-    } catch {
-      /* fall back to the demo set */
-    }
-    return INITIAL_NOTIFICATIONS;
-  });
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        'jobdev-candidate-notifications',
-        JSON.stringify(notifications),
-      );
-    } catch {
-      /* storage may be unavailable; ignore */
-    }
-  }, [notifications]);
+  // Notification view state is memory-only, never persisted alongside identity data.
+  const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
@@ -594,10 +574,7 @@ export function CandidateDashboard() {
         }}
         strengthPercent={completeness}
         missingSignals={missingSignals}
-        onLogout={() => {
-          logout();
-          window.location.href = '/login';
-        }}
+        onLogout={() => window.dispatchEvent(new CustomEvent('jobdev:logout'))}
       />
 
       <main className="min-w-0 flex-1 space-y-4">

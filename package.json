@@ -12,5 +12,14 @@
   "devDependencies": {
     "prettier": "^3.4.2",
     "turbo": "^2.3.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss": "8.5.28",
+      "qs": "6.16.0",
+      "source-map-js": "1.2.2",
+      "proxy-addr": "2.0.8",
+      "sharp": "0.35.5"
+    }
   }
 }

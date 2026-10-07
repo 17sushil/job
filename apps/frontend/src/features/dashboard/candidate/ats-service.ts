@@ -1,35 +1,7 @@
-/**
- * ATS resume client — the ONLY file that talks to the ATS engine.
- *
- * TEMPORARY SET-UP (works today, replace after deployment):
- * the browser calls the service directly. The URL and the key both come from
- * `apps/frontend/.env.local`:
- *
- *     NEXT_PUBLIC_ATS_ENDPOINT=https://abc.com/v1/format
- *     NEXT_PUBLIC_ATS_API_KEY=dev-key-change-me
- *
- * Both are `NEXT_PUBLIC_*`, which means they are readable in the browser — fine
- * for a throwaway random key during development, NOT for a real one. When the
- * service is deployed, move the key to a server proxy: `ATS_ENDPOINT` below
- * then points at that route and the key stops being public. Nothing else in the
- * feature changes.
- *
- * Request (multipart/form-data):
- *   file       the uploaded .pdf / .docx
- *   max_pages  2
- * Header: X-API-Key
- *
- * Response: 200 application/pdf → downloaded as-is. The filename is read from
- * `content-disposition` when the browser lets us see it.
- * Errors come back as { "detail": "..." } and are shown as-is.
- *
- * If the call fails, the demo generator produces a file instead so the flow
- * still completes, and the result says so.
- *
- *   TODO(ats-python): once the service is live, `demo-resume-pdf.ts` and
- *   `buildDemoResumeDocument()` can be deleted; nothing else imports them.
- */
-
+/** Resume mapping and same-origin Axios operations. ATS credentials exist only
+ * on the backend; the browser never calls the external service directly. */
+import { apiClient } from '@/lib/api-client';
+import { readApiError } from '@/features/auth/api';
 import {
   resumePdf,
   type CanvasDocument,
@@ -48,29 +20,8 @@ import type { CandidateProfile } from './mock-data';
 /*                              Endpoint and key                              */
 /* -------------------------------------------------------------------------- */
 
-/* ═══════════════════════════════════════════════════════════════════════════
- *   Set both values in  apps/frontend/.env.local
- *   (copy apps/frontend/.env.example, then restart `pnpm dev`):
- *
- *       NEXT_PUBLIC_ATS_ENDPOINT=https://abc.com/v1/format
- *       NEXT_PUBLIC_ATS_API_KEY=dev-key-change-me
- *
- *   Then the browser POSTs the file there and downloads what comes back.
- *   Replace the URL after you deploy, and the key with a real one —
- *   `openssl rand -hex 32`.
- *
- *   `'demo'` as the URL skips the call and always builds the file in-browser.
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-/** Temporary until the service is deployed. */
-export const ATS_FALLBACK_ENDPOINT: string = 'demo';
-
-/** The URL the generate button posts to. */
-export const ATS_ENDPOINT: string =
-  (process.env.NEXT_PUBLIC_ATS_ENDPOINT ?? '').trim() || ATS_FALLBACK_ENDPOINT;
-
-/** Sent as the X-API-Key header. Public while it is a throwaway key. */
-export const ATS_API_KEY: string = (process.env.NEXT_PUBLIC_ATS_API_KEY ?? '').trim();
+export const ATS_FALLBACK_ENDPOINT = 'demo';
+export const ATS_ENDPOINT: string = '/api/auth/resume';
 
 /**
  * Page budget sent with every upload: `max_pages` in the multipart body.
@@ -98,9 +49,7 @@ export const ATS_MAX_PAGES: string = (() => {
  *
  *       NEXT_PUBLIC_ATS_PARSE_ENDPOINT=https://abc.com/v1/parse
  */
-export const ATS_PARSE_ENDPOINT: string = (
-  process.env.NEXT_PUBLIC_ATS_PARSE_ENDPOINT ?? ''
-).trim();
+export const ATS_PARSE_ENDPOINT = '/api/auth/resume';
 
 /** Trailing slashes off, so `{jobId}` or `/{jobId}` can simply be appended. */
 function parseBase(endpoint: string): string {
@@ -446,80 +395,6 @@ function friendlyStatus(status: number, detail: string | null): string {
   }
 }
 
-async function fetchAsBlob(url: string, fallbackName: string): Promise<ServiceFile> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`the file URL answered ${response.status}`);
-  const bytes = await response.arrayBuffer();
-  if (bytes.byteLength === 0) throw new Error('the file URL returned an empty body');
-  return {
-    blob: new Blob([bytes], { type: response.headers.get('content-type') ?? PDF_MIME }),
-    fileName: response.headers.get('x-file-name') ?? fallbackName,
-  };
-}
-
-/**
- * Turns whatever the API answered into a downloadable file, covering the three
- * response styles a format/convert service normally uses.
- */
-async function readServiceResponse(
-  response: Response,
-  fallbackName: string,
-): Promise<ServiceFile> {
-  const contentType = (response.headers.get('content-type') ?? '').toLowerCase();
-  /* The service names the file in content-disposition; x-file-name is our
-     proxy's fallback, then the locally generated name. */
-  const headerName = fileNameFromDisposition(
-    response.headers.get('content-disposition'),
-    response.headers.get('x-file-name') ?? fallbackName,
-  );
-  const headerPages = Number(response.headers.get('x-pages') ?? '');
-  const pages = Number.isFinite(headerPages) && headerPages > 0 ? headerPages : undefined;
-
-  /* 1 — JSON: either a link to the file, or the file itself as base64. */
-  if (contentType.includes('json') || contentType.includes('text/plain')) {
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new Error('the API answered with text instead of a file');
-    }
-
-    const url = pickString(payload, ['url', 'pdfUrl', 'fileUrl', 'downloadUrl', 'link']);
-    if (url) {
-      const file = await fetchAsBlob(url, headerName ?? fallbackName);
-      return { ...file, pages };
-    }
-
-    const base64 = pickString(payload, ['base64', 'pdf', 'file', 'content']);
-    if (base64) {
-      if (/^https?:\/\//i.test(base64)) {
-        const file = await fetchAsBlob(base64, headerName ?? fallbackName);
-        return { ...file, pages };
-      }
-      return {
-        blob: base64ToBlob(base64, PDF_MIME),
-        fileName: headerName ?? fallbackName,
-        pages,
-      };
-    }
-
-    throw new Error('the API returned JSON without `url` or `base64`');
-  }
-
-  /* 2 — Anything else is treated as the file bytes. */
-  const bytes = await response.arrayBuffer();
-  if (bytes.byteLength === 0) throw new Error('the API returned an empty body');
-  return {
-    blob: new Blob([bytes], { type: contentType || PDF_MIME }),
-    fileName: headerName ?? fallbackName,
-    pages,
-  };
-}
-
-/* -------------------------------------------------------------------------- */
-/*                              Generator entry point                         */
-/* -------------------------------------------------------------------------- */
-
 async function runDemoPipeline(input: GenerateAtsResumeInput): Promise<AtsGenerationResult> {
   const perStep = 100 / ATS_PIPELINE_STEPS.length;
   for (let index = 0; index < ATS_PIPELINE_STEPS.length; index += 1) {
@@ -547,64 +422,33 @@ async function runDemoPipeline(input: GenerateAtsResumeInput): Promise<AtsGenera
 }
 
 /** POSTs the resume to the API and turns its response into the download. */
-async function runServicePipeline(
-  endpoint: string,
-  input: GenerateAtsResumeInput,
-): Promise<AtsGenerationResult> {
-  /* Exactly the fields the service documents: the file and the page budget. */
-  const form = new FormData();
-  if (input.rawFile) form.append('file', input.rawFile, input.rawFile.name);
-  form.append('max_pages', ATS_MAX_PAGES);
-
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), ATS_REQUEST_TIMEOUT_MS);
-
-  input.onProgress?.({ step: `Uploading to ${endpointHost(endpoint)}`, percent: 25 });
-
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      /* The key goes in the header; omitted entirely when none is configured. */
-      headers: ATS_API_KEY ? { 'X-API-Key': ATS_API_KEY } : undefined,
-      body: form,
-      signal: controller.signal,
-      cache: 'no-store',
+async function savedParsedProfile(file?: File | null): Promise<unknown> {
+  if (file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+    const response = await apiClient('/api/auth/resume', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: file.name, dataBase64: btoa(binary) }),
     });
-    if (!response.ok) {
-      const detail = await readDetail(response);
-      throw new Error(friendlyStatus(response.status, detail));
-    }
-
-    input.onProgress?.({ step: 'Reading the response', percent: 65 });
-    const jobId = response.headers.get('x-job-id');
-    /* The service often names the JSON URL outright: X-Resume-Json-Url. */
-    const parseUrl =
-      PARSE_URL_HEADERS.map((header) =>
-        resolveServiceUrl(response.headers.get(header), response.url || endpoint),
-      ).find((candidate): candidate is string => Boolean(candidate)) ?? null;
-    const file = await readServiceResponse(response, resumeFileName(input.profile));
-    input.onProgress?.({ step: 'Preparing your download', percent: 90 });
-
-    return {
-      fileName: file.fileName,
-      blob: file.blob,
-      pages: file.pages ?? 1,
-      generatedAt: new Date().toISOString(),
-      engine: 'service',
-      /* kept so Edit can fetch the parsed JSON without re-uploading the file */
-      ...(jobId ? { jobId } : {}),
-      ...(parseUrl ? { parseUrl } : {}),
-      endpoint,
-      note: `Generated by the ATS service${jobId ? ` · job ${jobId}` : ''}.`,
-    };
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error(`the API did not answer within ${ATS_REQUEST_TIMEOUT_MS / 1000}s`);
-    }
-    throw error;
-  } finally {
-    window.clearTimeout(timeout);
+    if (!response.ok) throw new Error(await readApiError(response));
+    const body = await response.json();
+    if (!body.data.parsed) throw new Error(body.data.atsError ?? 'Resume saved, but extraction is unavailable.');
+    return body.data.parsed;
   }
+  const response = await apiClient('/api/auth/resume');
+  if (!response.ok) throw new Error(await readApiError(response));
+  const body = await response.json();
+  if (!body.data.resume?.parsedProfile) throw new Error('No parsed resume is saved. Upload or re-extract your resume first.');
+  return body.data.resume.parsedProfile;
+}
+async function runServicePipeline(_endpoint: string, input: GenerateAtsResumeInput): Promise<AtsGenerationResult> {
+  input.onProgress?.({ step: 'Extracting through your account', percent: 25 });
+  const document = toResumeDocument(input.parsedJson ?? await savedParsedProfile(input.rawFile));
+  const { blob, pages } = resumePdf(document);
+  return { fileName: resumeFileName(input.profile), blob, pages, document,
+    generatedAt: new Date().toISOString(), engine: 'service', endpoint: ATS_ENDPOINT,
+    note: 'Extracted through the authenticated backend. Candidate PDF has no watermark.' };
 }
 
 /**
@@ -1311,94 +1155,15 @@ export function describePayload(payload: unknown): string {
  * text there is nothing to edit, so failures are surfaced as they are.
  */
 export async function parseAtsResume(input: {
-  /**
-   * `x-resume-json-url` from the format response (already absolute). Preferred:
-   * the service itself says where the JSON is, so nothing has to be configured.
-   */
   parseUrl?: string | null;
-  /** `x-job-id` from the format response — used when there is no URL header. */
   jobId?: string | null;
-  /** The uploaded file, used only when the service offers neither. */
   rawFile?: File | null;
   endpoint?: string;
-  parsedJson?: any;
+  parsedJson?: unknown;
 }): Promise<ResumeDocument> {
-  if (input.parsedJson) return toResumeDocument(input.parsedJson);
-
-  const endpoint = (input.endpoint ?? ATS_PARSE_ENDPOINT).trim();
-  const direct = (input.parseUrl ?? '').trim();
-  if (!direct && !endpoint) {
-    throw new Error(
-      'No parser endpoint is configured (NEXT_PUBLIC_ATS_PARSE_ENDPOINT) — set it to enable editing uploaded resumes.',
-    );
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ATS_REQUEST_TIMEOUT_MS);
-  const headers = ATS_API_KEY ? { 'X-API-Key': ATS_API_KEY } : undefined;
-
-  let url = endpoint;
-  let init: RequestInit;
-  if (direct) {
-    /* The service named the address — use it as-is. */
-    url = direct;
-    init = { method: 'GET', headers, signal: controller.signal, cache: 'no-store' };
-  } else if (input.jobId && endpoint) {
-    url = parseUrlFor(endpoint, input.jobId);
-    init = { method: 'GET', headers, signal: controller.signal, cache: 'no-store' };
-  } else if (input.rawFile) {
-    const form = new FormData();
-    form.append('file', input.rawFile, input.rawFile.name);
-    init = { method: 'POST', headers, body: form, signal: controller.signal, cache: 'no-store' };
-  } else {
-    clearTimeout(timer);
-    throw new Error(
-      'The uploaded file is only kept for this visit — upload it once more (or generate again), then press Edit.',
-    );
-  }
-
-  try {
-    const response = await fetch(url, init);
-    if (response.status === 404) {
-      const what = input.jobId ? `job ${input.jobId}` : url;
-      throw new Error(
-        `The service has nothing at ${what} any more — jobs are created by /v1/format and can expire. Generate again, then press Edit.`,
-      );
-    }
-    if (!response.ok) {
-      const detail = await readDetail(response);
-      throw new Error(friendlyStatus(response.status, detail));
-    }
-    const contentType = response.headers.get('content-type') ?? '';
-    if (!contentType.includes('json')) {
-      throw new Error(
-        `Expected JSON from ${url} but the service answered ${contentType || 'an unknown type'}.`,
-      );
-    }
-    const payload = (await response.json()) as unknown;
-    /* Dev builds print the raw answer so the shape can be checked instantly
-       (DevTools → Console). Never logged in production. */
-    if (process.env.NODE_ENV !== 'production') {
-      console.info('[ats] /v1/parse answered with:', payload);
-    }
-    const document = toResumeDocument(payload);
-    if (!document.sections.length) {
-      throw new Error(
-        `The parser answered, but nothing in it looked like resume sections (${describePayload(payload)}). Send that JSON over and the mapping gets one line added.`,
-      );
-    }
-    return document;
-  } catch (problem) {
-    if (problem instanceof Error && problem.name === 'AbortError') {
-      throw new Error(`The parser did not answer within ${ATS_REQUEST_TIMEOUT_MS / 1000} s.`);
-    }
-    if (problem instanceof TypeError) {
-      throw new Error(
-        `Could not reach ${url} — check the URL, that the service is running, and that it allows this browser (CORS).`,
-      );
-    }
-    throw problem;
-  } finally {
-    clearTimeout(timer);
-  }
+  // Caller-provided service URLs/job IDs are never used as authorization.
+  const parsed = input.parsedJson ?? await savedParsedProfile(input.rawFile);
+  const document = toResumeDocument(parsed);
+  if (!document.sections.length) throw new Error('No structured resume sections are available. Re-extract the saved resume or open its saved canvas.');
+  return document;
 }

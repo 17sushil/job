@@ -1,3 +1,5 @@
+import { issueCsrf } from '../../middlewares/csrf.middleware.js';
+import { authRateLimiter } from '../../middlewares/rateLimiter.js';
 import { saveCurrentResume } from '../resume/resume.controller.js';
 import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/auth.middleware.js';
@@ -27,9 +29,10 @@ import {
 
 export const authRoutes = Router();
 
-authRoutes.post('/register', validate(registerSchema), register);
-authRoutes.post('/login', validate(loginSchema), login);
-authRoutes.post('/verify-otp', validate(verifyOtpSchema), verifyOtp);
+authRoutes.get('/csrf', issueCsrf);
+authRoutes.post('/register', authRateLimiter, validate(registerSchema), register);
+authRoutes.post('/login', authRateLimiter, validate(loginSchema), login);
+authRoutes.post('/verify-otp', authRateLimiter, validate(verifyOtpSchema), verifyOtp);
 authRoutes.get('/me', authMiddleware, getCurrentUser);
 authRoutes.post('/logout', authMiddleware, logoutUser);
 authRoutes.patch('/profile', authMiddleware, validate(updateProfileSchema), updateProfile);

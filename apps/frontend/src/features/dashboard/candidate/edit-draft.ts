@@ -1,34 +1,9 @@
-/* -------------------------------------------------------------------------- */
-/*                  The edit draft — every change, as JSON                    */
-/*                                                                            */
-/*  What the candidate edits is a `CanvasDocument` (text, position, fonts,     */
-/*  colours, images, sheets). Pressing **Save changes** in the editor does two */
-/*  things, without any extra button:                                          */
-/*                                                                            */
-/*    1. the PDF is rendered, exactly as before;                              */
-/*    2. the whole edit is written as JSON — `{ kind, version, savedAt,        */
-/*       jobId, fileName, pages, canvas }` — into the store.                  */
-/*                                                                            */
-/*  The draft is kept by the ATS service, the same way the PDF and the parsed  */
-/*  JSON are:                                                                  */
-/*                                                                            */
-/*      PUT /v1/resume/{job_id}/canvas   ← Save changes writes it             */
-/*      GET /v1/resume/{job_id}/canvas   ← Edit reads it (404 = nothing yet)  */
-/*                                                                            */
-/*  One draft per job id, so saving the same resume again REWRITES the same    */
-/*  record — never a pile of files. The URL is built from the service the app  */
-/*  already talks to (NEXT_PUBLIC_ATS_ENDPOINT), sent with the same header,    */
-/*  `X-API-Key`, as `POST /v1/format` and `GET /v1/parse/{job_id}`.            */
-/*                                                                            */
-/*  Pressing **Edit** again opens that saved draft, so the work continues      */
-/*  where it was left even after a reload.                                     */
-/*                                                                            */
-/*  Reading is deliberately forgiving: a draft from an older version, a bare   */
-/*  canvas, a hand-edited file, a service envelope — all open, and anything    */
-/*  repaired is reported in plain words so nothing disappears silently.        */
-/* -------------------------------------------------------------------------- */
-
-import { ATS_API_KEY, ATS_ENDPOINT } from './ats-service';
+/** Account-owned draft compatibility helpers. The database is authoritative;
+ * no public service credentials, browser storage, or arbitrary job-id access. */
+import { apiClient } from '@/lib/api-client';
+import { readApiError } from '@/features/auth/api';
+import { useAuthStore } from '@/store/auth';
+import { resumePdfFromCanvas } from './demo-resume-pdf';
 import { pruneCanvas } from './demo-resume-pdf';
 import type {
   CanvasAsset,
@@ -44,40 +19,9 @@ import type {
 export const DRAFT_KIND = 'resume-canvas-draft';
 export const DRAFT_VERSION = 1;
 
-/**
- * The draft endpoint, on the same service as format/parse.
- *
- * Default: whatever `NEXT_PUBLIC_ATS_ENDPOINT` points at (…/v1/format → its
- * origin). Set `NEXT_PUBLIC_ATS_DRAFT_ENDPOINT` to override, either as the
- * service origin or as a full template that contains `{jobId}`, e.g.
- *
- *     NEXT_PUBLIC_ATS_DRAFT_ENDPOINT=https://abc.com/v1/resume/{jobId}/canvas
- */
-export const ATS_DRAFT_ENDPOINT: string = (
-  process.env.NEXT_PUBLIC_ATS_DRAFT_ENDPOINT ?? ''
-).trim();
-
-function serviceOrigin(): string {
-  if (ATS_DRAFT_ENDPOINT) return ATS_DRAFT_ENDPOINT.replace(/\/+$/, '');
-  try {
-    return new URL(ATS_ENDPOINT).origin;
-  } catch {
-    return '';
-  }
-}
-
-/** `https://abc.com/v1/resume/<job id>/canvas`, or '' when nothing is set. */
-export function draftUrl(jobId: string): string {
-  const base = serviceOrigin();
-  if (!base) return '';
-  if (base.includes('{jobId}')) return base.replace('{jobId}', encodeURIComponent(jobId));
-  const tail = base.endsWith('/canvas') ? '' : `/v1/resume/${encodeURIComponent(jobId)}/canvas`;
-  return `${base}${tail}`;
-}
-
-export function draftsConfigured(): boolean {
-  return Boolean(serviceOrigin());
-}
+export const ATS_DRAFT_ENDPOINT = '/api/auth/resume/current';
+export function draftUrl(_jobId: string): string { return ATS_DRAFT_ENDPOINT; }
+export function draftsConfigured(): boolean { return true; }
 
 export interface EditDraft {
   kind: string;
@@ -155,38 +99,21 @@ export interface DraftSaveResult {
  */
 export async function saveDraft(canvas: CanvasDocument, meta: DraftMeta = {}): Promise<DraftSaveResult> {
   const key = draftKey(meta);
-  if (!meta.jobId) {
-    return {
-      ok: false,
-      skipped: true,
-      key,
-      reason: 'the service did not give this resume a job id, so there is nowhere to save it yet',
-    };
-  }
-  const url = draftUrl(meta.jobId);
-  if (!url) {
-    return { ok: false, skipped: true, key, reason: 'no ATS service URL is configured' };
-  }
-
-  const draft = buildDraft(canvas, meta);
   try {
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        'content-type': 'application/json',
-        ...(ATS_API_KEY ? { 'X-API-Key': ATS_API_KEY } : {}),
-      },
-      body: JSON.stringify(draft),
+    const { blob } = resumePdfFromCanvas(canvas);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+    const response = await apiClient(ATS_DRAFT_ENDPOINT, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileName: meta.fileName?.endsWith('.pdf') ? meta.fileName : 'edited-resume.pdf',
+        pdfBase64: btoa(binary), canvas, profile: useAuthStore.getState().user?.parsedProfile ?? {} }),
     });
-    if (!response.ok) {
-      const info = (await response.json().catch(() => null)) as { detail?: string } | null;
-      return { ok: false, key, reason: info?.detail ?? `the service answered ${response.status}` };
-    }
-    const info = (await response.json().catch(() => ({}))) as { saved_at?: string };
-    return { ok: true, key, savedAt: info.saved_at ?? draft.savedAt, bytes: JSON.stringify(draft).length };
-  } catch {
-    return { ok: false, key, reason: 'the service could not be reached' };
-  }
+    if (!response.ok) return { ok: false, key, reason: await readApiError(response) };
+    const body = await response.json();
+    useAuthStore.getState().setUser(body.data.user);
+    return { ok: true, key, savedAt: new Date().toISOString(), bytes: blob.size };
+  } catch (error) { return { ok: false, key, reason: error instanceof Error ? error.message : 'Could not save the draft.' }; }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -369,19 +296,11 @@ export function parseDraft(text: string): Omit<DraftRead, 'key'> {
  * Never throws: a broken file simply means "start from the PDF".
  */
 export async function loadDraft(meta: DraftMeta): Promise<DraftRead | null> {
-  const key = draftKey(meta);
-  if (!meta.jobId) return null;
-  const url = draftUrl(meta.jobId);
-  if (!url) return null;
   try {
-    const response = await fetch(url, {
-      cache: 'no-store',
-      headers: ATS_API_KEY ? { 'X-API-Key': ATS_API_KEY } : undefined,
-    });
+    const response = await apiClient('/api/auth/resume');
     if (!response.ok) return null;
-    const text = await response.text();
-    return { ...parseDraft(text), key };
-  } catch {
-    return null;
-  }
+    const body = await response.json();
+    const canvas = body.data.resume?.canvas;
+    return canvas ? { ...parseDraft(JSON.stringify(canvas)), key: draftKey(meta) } : null;
+  } catch { return null; }
 }

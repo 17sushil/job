@@ -141,7 +141,6 @@ function StatCard({
 
 export function RecruiterDashboard() {
   const user = useAuthStore((state) => state.user);
-  const logout = useAuthStore((state) => state.logout);
 
   const [view, setView] = useState<RecruiterView>('overview');
   const [jobs, setJobs] = useState<Job[]>(INITIAL_JOBS);
@@ -161,28 +160,9 @@ export function RecruiterDashboard() {
         toast({ title: error.message, variant: 'destructive' }),
       );
   }, []);
-  /* Notifications persist in localStorage so read state survives reloads. */
-  const [notifications, setNotifications] = useState<Notification[]>(() => {
-    if (typeof window === 'undefined') return INITIAL_NOTIFICATIONS;
-    try {
-      const raw = window.localStorage.getItem('jobdev-recruiter-notifications');
-      if (raw) return JSON.parse(raw) as Notification[];
-    } catch {
-      /* fall back to the demo set */
-    }
-    return INITIAL_NOTIFICATIONS;
-  });
+  // Notification view state is memory-only, never persisted alongside identity data.
+  const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        'jobdev-recruiter-notifications',
-        JSON.stringify(notifications),
-      );
-    } catch {
-      /* storage may be unavailable; ignore */
-    }
-  }, [notifications]);
   const [notifOpen, setNotifOpen] = useState(false);
 
   /* The navbar bell + gear live in the shared layout; they drive this
@@ -358,7 +338,7 @@ export function RecruiterDashboard() {
         active={view}
         onSelect={setView}
         badges={badges}
-        onLogout={logout}
+        onLogout={() => window.dispatchEvent(new CustomEvent('jobdev:logout'))}
       />
 
       <main className="min-w-0 flex-1 space-y-4">

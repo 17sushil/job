@@ -14,9 +14,9 @@ services:
       - key: DB_SSL
         value: "true"
       - key: DB_SSL_REJECT_UNAUTHORIZED
-        value: "false"
-      - key: STATIC_OTP
-        value: "123456"
+        value: "true"
+      - key: WEB_ORIGINS
+        value: https://jobdev-web.onrender.com
       - key: DATABASE_URL
         fromGroup: jobdev-secrets
       - key: JWT_SECRET

@@ -70,8 +70,8 @@ export function RegisterForm({ role }: RegisterFormProps) {
         notice="Account created for"
         backLabel="Back to details"
         onBack={() => setStep('details')}
-        onVerified={(user, token) => {
-          setSession(user, token);
+        onVerified={(user) => {
+          setSession(user);
           toast({ title: 'Verified. Welcome to JobDev!', variant: 'success' });
           router.push('/dashboard');
         }}
