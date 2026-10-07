@@ -1,13 +1,14 @@
 'use client';
+import { useMutation } from '@tanstack/react-query';
 
-import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, KeyRound } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
+import { ArrowLeft, KeyRound } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { readApiError, verifyOtpRequest, type AuthUser } from '@/features/auth/api';
+import { verifyOtpRequest, type AuthUser } from '@/features/auth/api';
 
 interface OtpStepProps {
   identifier: string;
@@ -25,7 +26,11 @@ export function OtpStep({
   backLabel,
 }: OtpStepProps) {
   const [otp, setOtp] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const mutation = useMutation({
+    mutationFn: (args: Parameters<typeof verifyOtpRequest>) =>
+      verifyOtpRequest(...args),
+  });
+  const submitting = mutation.isPending;
   const otpInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -40,21 +45,12 @@ export function OtpStep({
       return;
     }
 
-    setSubmitting(true);
     try {
-      const res = await verifyOtpRequest(identifier, otp);
+      const data = await mutation.mutateAsync([identifier, otp]);
 
-      if (!res.ok) {
-        toast({ title: await readApiError(res), variant: 'destructive' });
-        return;
-      }
-
-      const body = await res.json();
-      onVerified(body.data.user as AuthUser);
-    } catch {
-      toast({ title: 'Network error. Please try again.', variant: 'destructive' });
-    } finally {
-      setSubmitting(false);
+      onVerified(data.user as AuthUser);
+    } catch (error) {
+      toast({ title: (error as Error).message, variant: 'destructive' });
     }
   };
 
@@ -64,7 +60,12 @@ export function OtpStep({
         <KeyRound className="h-4 w-4 shrink-0" />
         <span>
           {notice} <strong>{identifier}</strong>.
-          {process.env.NODE_ENV !== 'production' && <> For testing, use <strong>123456</strong>.</>}
+          {process.env.NODE_ENV !== 'production' && (
+            <>
+              {' '}
+              For testing, use <strong>123456</strong>.
+            </>
+          )}
         </span>
       </div>
 

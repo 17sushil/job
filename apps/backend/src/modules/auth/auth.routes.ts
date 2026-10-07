@@ -13,8 +13,6 @@ import {
   updateProfile,
   uploadResume,
   getSavedResume,
-  formatResumeProxy,
-  saveResumeDraft,
   logSearchHistory,
   verifyOtp,
 } from './auth.controller.js';
@@ -39,8 +37,6 @@ authRoutes.patch('/profile', authMiddleware, validate(updateProfileSchema), upda
 authRoutes.put('/resume/current', authMiddleware, saveCurrentResume);
 authRoutes.get('/resume', authMiddleware, getSavedResume);
 authRoutes.post('/resume', authMiddleware, validate(uploadResumeSchema), uploadResume);
-authRoutes.post('/resume/draft', authMiddleware, saveResumeDraft);
-authRoutes.post('/format', authMiddleware, formatResumeProxy);
 authRoutes.post('/search-history', authMiddleware, logSearchHistory);
 authRoutes.post(
   '/change-password',

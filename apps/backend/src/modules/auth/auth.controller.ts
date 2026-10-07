@@ -59,80 +59,11 @@ export const getCurrentUser: RequestHandler = async (req, res) => {
 };
 
 
-import { ResumeVersion } from '../user/resume-version.entity.js';
-
-export const formatResumeProxy: RequestHandler = async (req, res, next) => {
-  try {
-    if (req.user!.role.toLowerCase() !== 'candidate') {
-      throw new AppError(403, 'Only candidates can format a resume');
-    }
-    const { fileName, dataBase64 } = req.body;
-    
-    // Convert base64 to Blob
-    const buffer = Buffer.from(dataBase64, 'base64');
-    const blob = new Blob([buffer], { type: 'application/pdf' });
-    
-    // Create FormData for Python API
-    const formData = new FormData();
-    formData.append('file', blob, fileName);
-    formData.append('max_pages', '2');
-    
-    // Proxy to Python API
-    const ATS_ENDPOINT = `${env.ATS_ENDPOINT}/v1/format`;
-    if (!env.ATS_API_KEY) {
-      throw new AppError(503, 'Extraction service is not configured on the server');
-    }
-    const ATS_API_KEY = env.ATS_API_KEY;
-    
-    const pyRes = await serviceRequest(ATS_ENDPOINT, {
-      method: 'POST',
-      headers: { 'X-API-Key': ATS_API_KEY },
-      body: formData
-    });
-    
-    if (!pyRes.ok) {
-      throw new AppError(500, 'Python API error: ' + pyRes.statusText);
-    }
-    
-    const parsedJson = await pyRes.json();
-    
-    await AppDataSource.transaction(async manager => {
-      await manager.delete(ResumeVersion, { userId: req.user!.userId });
-      await manager.getRepository(User).update(req.user!.userId, { parsedProfile: parsedJson });
-    });
-    res.json({ success: true, data: { parsedJson } });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const saveResumeDraft: RequestHandler = async (req, res, next) => {
-  try {
-    if (req.user!.role.toLowerCase() !== 'candidate') {
-      throw new AppError(403, 'Only candidates can save drafts');
-    }
-    const { parsedJson } = req.body;
-    
-    if (!parsedJson || typeof parsedJson !== 'object' || Array.isArray(parsedJson) || parsedJson.pages) {
-      throw new AppError(400, 'Canvas saves must use /api/auth/resume/current with the edited PDF.');
-    }
-    await AppDataSource.transaction(async manager => {
-      await manager.delete(ResumeVersion, { userId: req.user!.userId });
-      await manager.getRepository(User).update(req.user!.userId, { parsedProfile: parsedJson });
-    });
-    res.json({ success: true, data: { saved: true } });
-  } catch (error) {
-    next(error);
-  }
-};
-
 /** Return only the authenticated candidate's own saved upload. */
 export const getSavedResume: RequestHandler = async (req, res, next) => {
   try {
-    const user = req.user!;
-    if (user.role.toLowerCase() !== 'candidate') {
-      throw new AppError(403, 'Only candidates can retrieve their resume');
-    }
+    if (req.user!.role.toLowerCase() !== 'candidate') throw new AppError(403, 'Only candidates can retrieve their resume');
+    const user = await AppDataSource.getRepository(User).findOneByOrFail({ userId: req.user!.userId });
     res.setHeader('Cache-Control', 'private, no-store');
     if (!user.resumeFileName || (!user.resumeData && !user.resumePdf)) {
       res.json({ success: true, data: { resume: null } });

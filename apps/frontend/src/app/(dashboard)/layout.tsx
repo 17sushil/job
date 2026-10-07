@@ -1,8 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { toast } from '@/components/ui/use-toast';
 import {
   Bell,
   Briefcase,
@@ -12,19 +10,18 @@ import {
   ShieldCheck,
   UserRound,
 } from 'lucide-react';
-import { toast } from '@/components/ui/use-toast';
+import Link from 'next/link';
+import { redirect, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 import { Logo } from '@/components/logo';
 import { ThemeToggle } from '@/components/theme-toggle';
-import {
-  logoutRequest,
-  recruiterProfileIncomplete,
-} from '@/features/auth/api';
+import { logoutRequest, recruiterProfileIncomplete } from '@/features/auth/api';
+import { useSession } from '@/features/auth/queries';
 import { RecruiterProfileGate } from '@/features/dashboard/recruiter-profile-gate';
-import { fetchSessionUser } from '@/lib/api-helpers';
-import { UNAUTHORIZED_EVENT } from '@/lib/api-client';
-import { useAuthStore } from '@/store/auth';
+import { ApiError, clearCsrf, UNAUTHORIZED_EVENT } from '@/lib/api-client';
 import { useThemeEffect } from '@/store/theme';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 const ROLE_LABELS: Record<string, string> = {
   candidate: 'Candidate',
@@ -39,92 +36,52 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const user = useAuthStore((state) => state.user);
-  const setUser = useAuthStore((state) => state.setUser);
-  const clearUser = useAuthStore((state) => state.logout);
-  const logoutPending = useRef(false);
-  const [checking, setChecking] = useState(true);
-  const [mounted, setMounted] = useState(false);
-
+  const session = useSession();
+  const user = session.data;
+  const client = useQueryClient();
   useThemeEffect();
-
+  const logout = useMutation({
+    mutationFn: logoutRequest,
+    onSuccess: () => {
+      client.clear();
+      clearCsrf();
+      router.replace('/login');
+    },
+    onError: (error) => toast({ title: error.message, variant: 'destructive' }),
+  });
+  // UI event wiring only. Queries/mutations own all authentication requests.
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    const handleUnauthorized = () => {
-      clearUser();
-      toast({
-        title: 'Session ended. Please log in again.',
-        variant: 'destructive',
-      });
+    const expired = () => {
+      client.clear();
       router.replace('/login');
     };
-    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
-    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
-  }, [clearUser, router]);
-
-  useEffect(() => {
-    let active = true;
-
-    const verifySession = async () => {
-      try {
-        const sessionUser = await fetchSessionUser();
-        if (!active) return;
-
-        if (sessionUser) {
-          setUser(sessionUser);
-          setChecking(false);
-          return;
-        }
-
-        clearUser();
-        router.replace('/login');
-      } catch {
-        if (!active) return;
-        clearUser();
-        toast({
-          title: 'Not authenticated. Please log in again.',
-          variant: 'destructive',
-        });
-        router.replace('/login');
-      }
+    const signOut = () => {
+      if (!logout.isPending) logout.mutate();
     };
-
-    void verifySession();
+    window.addEventListener(UNAUTHORIZED_EVENT, expired);
+    window.addEventListener('jobdev:logout', signOut);
     return () => {
-      active = false;
+      window.removeEventListener(UNAUTHORIZED_EVENT, expired);
+      window.removeEventListener('jobdev:logout', signOut);
     };
-  }, [router, setUser, clearUser]);
-
-  const handleLogout = useCallback(async () => {
-    if (logoutPending.current) return;
-    logoutPending.current = true;
-    try {
-      const response = await logoutRequest();
-      if (!response.ok && response.status !== 401) throw new Error('Logout failed');
-      clearUser();
-      toast({ title: 'Logged out', variant: 'success' });
-      router.replace('/login');
-    } catch {
-      toast({ title: 'Could not complete logout. Please retry.', variant: 'destructive' });
-    } finally { logoutPending.current = false; }
-  }, [clearUser, router]);
-
-  useEffect(() => {
-    const logout = () => { void handleLogout(); };
-    window.addEventListener('jobdev:logout', logout);
-    return () => window.removeEventListener('jobdev:logout', logout);
-  }, [handleLogout]);
-
-  if (!mounted || checking || !user) {
+  }, [client, router, logout.mutate, logout.isPending]);
+  const handleLogout = () => { if (!logout.isPending) logout.mutate(); };
+  if (session.error instanceof ApiError && session.error.status === 401)
+    redirect('/login');
+  if (session.isError)
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
+      <div className="p-8 text-center">
+        <p>{session.error.message}</p>
+        <button onClick={() => session.refetch()}>Retry connection</button>
       </div>
     );
-  }
+  if (session.isPending)
+    return (
+      <div role="status" className="p-8 text-center">
+        Loading your account…
+      </div>
+    );
+  if (!user) redirect('/login');
 
   const RoleIcon =
     user.role === 'recruiter'
@@ -157,7 +114,9 @@ export default function DashboardLayout({
                 <button
                   type="button"
                   onClick={() =>
-                    window.dispatchEvent(new CustomEvent('jobdev:notifications'))
+                    window.dispatchEvent(
+                      new CustomEvent('jobdev:notifications'),
+                    )
                   }
                   title="Notifications"
                   aria-label="Notifications"
@@ -184,6 +143,7 @@ export default function DashboardLayout({
             <button
               type="button"
               onClick={handleLogout}
+              disabled={logout.isPending}
               title="Log out"
               aria-label="Log out"
               className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-destructive"

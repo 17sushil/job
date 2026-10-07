@@ -85,7 +85,7 @@ export class AuthService {
         : TESTING_OTP;
     const otpHash = await bcrypt.hash(otp, 10);
     const otpExpiry = new Date(Date.now() + OTP_TTL_MS);
-    await this.userRepo.update(user.userId, { otpHash, otpExpiry });
+    await this.userRepo.updateOnly(user.userId, { otpHash, otpExpiry });
 
   }
 
@@ -148,7 +148,7 @@ export class AuthService {
     }
 
     if (user.otpExpiry.getTime() < Date.now()) {
-      await this.userRepo.update(user.userId, { otpHash: null, otpExpiry: null });
+      await this.userRepo.updateOnly(user.userId, { otpHash: null, otpExpiry: null });
       throw new AppError(400, 'Invalid or expired OTP');
     }
 
@@ -169,22 +169,8 @@ export class AuthService {
     if (!user || user.isDeleted) {
       throw new AppError(404, 'User not found');
     }
-    const { parsedProfile, ...rest } = input;
-    const fields: UpdateUserInput = { ...rest };
-    /* Clients send parsedProfile as serialized JSON text; the column is jsonb
-       so store the parsed object instead. */
-    if (typeof parsedProfile === 'string') {
-      try {
-        fields.parsedProfile = JSON.parse(parsedProfile) as Record<string, unknown>;
-      } catch {
-        fields.parsedProfile = { text: parsedProfile };
-      }
-    } else if (parsedProfile) {
-      fields.parsedProfile = parsedProfile;
-    } else if (parsedProfile === null) {
-      fields.parsedProfile = null;
-    }
-    return this.userRepo.update(userId, { ...fields });
+    // Zod already validated the request. Store JSON as JSON, not serialized text.
+    return this.userRepo.update(userId, input);
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string) {

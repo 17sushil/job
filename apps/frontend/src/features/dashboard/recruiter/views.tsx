@@ -1,6 +1,6 @@
 'use client';
+import { useQuery } from '@tanstack/react-query';
 
-import { useEffect, useMemo, useState } from 'react';
 import {
   BadgeCheck,
   Briefcase,
@@ -23,18 +23,17 @@ import {
   Send,
   X,
 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { SourcesDonut, WeeklyBars } from './charts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useSession, useSetSession } from '@/features/auth/queries';
+import { apiBlob } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { apiClient } from '@/lib/api-client';
-import { readApiError } from '@/features/auth/api';
-import { useAuthStore } from '@/store/auth';
+import { SourcesDonut, WeeklyBars } from './charts';
 
 import { RecruiterProfileForm } from '../recruiter-profile-form';
-import { HelpCard } from './sidebar';
 import {
   INITIAL_CONVERSATIONS,
   SOURCES,
@@ -45,6 +44,7 @@ import {
   type Job,
   type JobStatus,
 } from './mock-data';
+import { HelpCard } from './sidebar';
 
 /* --- shared bits ------------------------------------------------------- */
 
@@ -137,31 +137,20 @@ export function ApplicantDrawer({
   const [scheduling, setScheduling] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
   const [resumeUrl, setResumeUrl] = useState<string | null>(null);
-  const [resumeError, setResumeError] = useState<string | null>(null);
+  const { data: viewer } = useSession();
+  const resume = useQuery({ queryKey: ['account', viewer?.id, 'recruiter-resume', applicant?.candidateId ?? applicant?.id],
+    queryFn: ({ signal }) => apiBlob(applicant!.resumeUrl!, signal), enabled: !!viewer && resumeOpen && !!applicant?.resumeUrl,
+    staleTime: 0, gcTime: 0 });
+  const resumeError = resume.error?.message;
   useEffect(() => { setResumeOpen(false); }, [applicant?.id]);
+  // Object URLs are browser resources; the query owns the PDF network request.
   useEffect(() => {
     setResumeUrl(null);
-    setResumeError(null);
-    if (!resumeOpen || !applicant?.resumeUrl) return;
-    const controller = new AbortController();
-    let cancelled = false;
-    let objectUrl: string | null = null;
-    async function load() {
-      try {
-        const response = await apiClient(applicant!.resumeUrl!, { signal: controller.signal });
-        if (!response.ok) throw new Error(await readApiError(response));
-        const blob = await response.blob();
-        if (cancelled) return;
-        if (!blob.type.includes('pdf')) throw new Error('The resume preview is not a PDF.');
-        objectUrl = URL.createObjectURL(blob);
-        setResumeUrl(objectUrl);
-      } catch (problem) {
-        if (!cancelled) setResumeError(problem instanceof Error ? problem.message : 'Could not load the resume.');
-      }
-    }
-    void load();
-    return () => { cancelled = true; controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [resumeOpen, applicant?.resumeUrl]);
+    if (!resumeOpen || !resume.data) return;
+    const url = URL.createObjectURL(resume.data);
+    setResumeUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [resumeOpen, resume.data]);
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape') { if (resumeOpen) setResumeOpen(false); else onClose(); }
@@ -1089,8 +1078,8 @@ export function MessagesView() {
 /* --- Company profile / Settings / Help ------------------------------------- */
 
 export function CompanyView() {
-  const user = useAuthStore((state) => state.user);
-  const setUser = useAuthStore((state) => state.setUser);
+  const { data: user } = useSession();
+  const setUser = useSetSession();
   const [saved, setSaved] = useState(false);
 
   if (!user) return null;

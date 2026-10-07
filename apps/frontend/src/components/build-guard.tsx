@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
-import { apiClient } from '@/lib/api-client';
+import { buildCheck } from '@/lib/api-client';
 import { clearLegacyStorage } from '@/lib/clear-legacy-storage';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 /**
  * Dev-preview self-heal: client chunks remember the build id of the page
@@ -12,32 +13,25 @@ import { clearLegacyStorage } from '@/lib/clear-legacy-storage';
  */
 const BIRTH_BUILD =
   typeof document !== 'undefined'
-    ? document
+    ? (document
         .querySelector('meta[name="app-build"]')
-        ?.getAttribute('content') ?? null
+        ?.getAttribute('content') ?? null)
     : null;
 
 export function BuildGuard() {
+  const build = useQuery({
+    queryKey: ['build'],
+    enabled: process.env.NODE_ENV === 'production',
+    queryFn: ({ signal }) => buildCheck(signal),
+    staleTime: Infinity,
+  });
   useEffect(() => {
     clearLegacyStorage();
-    if (!BIRTH_BUILD) return;
-
-    let cancelled = false;
-    apiClient('/buildcheck', { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((body: { id?: string }) => {
-        if (!cancelled && body.id && body.id !== BIRTH_BUILD) {
-          window.location.reload();
-        }
-      })
-      .catch(() => {
-        // offline or proxy hiccup - ignore
-      });
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
-
+  // UI lifecycle only: react to a deployment identifier, never fetch in an effect.
+  useEffect(() => {
+    if (BIRTH_BUILD && build.data?.id && build.data.id !== BIRTH_BUILD)
+      window.location.reload();
+  }, [build.data?.id]);
   return null;
 }
