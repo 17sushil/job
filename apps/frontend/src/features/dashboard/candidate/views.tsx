@@ -1010,7 +1010,6 @@ export function JobsView({
   onToggleSave: (job: JobPosting) => void;
   onApply: (job: JobPosting) => void;
 }) {
-  const [query, setQuery] = useState('');
   const [workMode, setWorkMode] = useState<WorkMode | 'Any'>('Any');
   const [minMatch, setMinMatch] = useState(0);
   const [sort, setSort] = useState<'match' | 'recent' | 'salary'>('match');
@@ -1041,29 +1040,14 @@ export function JobsView({
       .slice(0, 15);
   }, [jobs]);
 
+  /* Text search happens upstream (single search bar on the jobs view);
+     this card only applies the work-mode, match and sort controls. */
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
     const list = jobs
       .filter((job) =>
         workMode === 'Any' ? true : job.workMode === workMode,
       )
-      .filter((job) => job.match >= minMatch)
-      .filter((job) =>
-        keywordFilters.length === 0
-          ? true
-          : keywordFilters.some((kw) =>
-              `${job.title} ${job.company} ${job.location} ${job.matchedSkills.join(' ')} ${job.missingSkills.join(' ')}`
-                .toLowerCase()
-                .includes(kw.toLowerCase())
-            )
-      )
-      .filter((job) =>
-        q
-          ? `${job.title} ${job.company} ${job.location} ${job.matchedSkills.join(' ')}`
-              .toLowerCase()
-              .includes(q)
-          : true,
-      );
+      .filter((job) => job.match >= minMatch);
 
     return [...list].sort((a, b) => {
       if (sort === 'recent') return a.postedDaysAgo - b.postedDaysAgo;
@@ -1074,7 +1058,7 @@ export function JobsView({
       }
       return b.match - a.match;
     });
-  }, [jobs, query, workMode, minMatch, sort, keywordFilters]);
+  }, [jobs, workMode, minMatch, sort]);
 
   return (
     <div className="space-y-5">
@@ -1087,33 +1071,6 @@ export function JobsView({
       </div>
 
       <div className="animate-fade-in-up space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Compass className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search by title, company, skill or city…"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && query.trim()) {
-                  logSearchKeywordRequest(query).catch(() => {});
-                }
-              }}
-              className="w-full pl-9"
-            />
-          </div>
-          <Button 
-            type="button" 
-            variant="default" 
-            onClick={() => {
-              if (query.trim()) logSearchKeywordRequest(query).catch(() => {});
-            }}
-          >
-            <Search className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Search</span>
-          </Button>
-        </div>
-
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1 rounded-xl bg-muted p-1">
             {(['Any', 'Remote', 'Hybrid', 'On-site'] as const).map((mode) => (
@@ -1203,7 +1160,6 @@ export function JobsView({
             <Button
               variant="outline"
               onClick={() => {
-                setQuery('');
                 setWorkMode('Any');
                 setMinMatch(0);
               }}
@@ -1937,13 +1893,15 @@ export function ProfileView({
     phone: string;
     expectedSalary: string;
     noticePeriod: string;
-  }) => void;
+  }) => Promise<void>;
   onAddSkill?: (skill: string) => void;
   onRemoveSkill?: (skill: string) => void;
   onAddExperience?: (entry: { role: string; company: string; period: string }) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [skillDraft, setSkillDraft] = useState('');
   const [expDraft, setExpDraft] = useState({ role: '', company: '', period: '' });
   const [form, setForm] = useState({
@@ -1960,12 +1918,19 @@ export function ProfileView({
   const circumference = 2 * Math.PI * radius;
   const dash = (percent / 100) * circumference;
 
-  function save(event: React.FormEvent) {
+  async function save(event: React.FormEvent) {
     event.preventDefault();
-    setEditing(false);
-    setSaved(true);
-    onSaveProfile?.(form);
-    window.setTimeout(() => setSaved(false), 2600);
+    if (profileSaving) return;
+    setProfileSaving(true);
+    setProfileError(null);
+    try {
+      await onSaveProfile?.(form);
+      setEditing(false);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2600);
+    } catch (problem) {
+      setProfileError(problem instanceof Error ? problem.message : 'Could not save the profile.');
+    } finally { setProfileSaving(false); }
   }
 
   function addSkill() {
@@ -2003,6 +1968,8 @@ export function ProfileView({
         </Button>
       </div>
 
+      {profileError && <p role="alert" className="text-sm text-destructive">{profileError}</p>}
+      {profileSaving && <p role="status" className="text-sm text-muted-foreground">Saving profile…</p>}
       {saved ? (
         <p className="animate-pop-in flex items-center gap-2 rounded-xl bg-success/10 p-3 text-sm font-semibold text-success">
           <Check className="h-4 w-4" />
@@ -2243,8 +2210,8 @@ export function ProfileView({
                   <GraduationCap className="h-3.5 w-3.5 text-primary" />
                   Education
                 </p>
-                {profile.education.map((entry) => (
-                  <div key={entry.degree}>
+                {profile.education.map((entry, index) => (
+                  <div key={`${entry.degree}-${entry.school}-${index}`}>
                     <p className="text-sm font-semibold">{entry.degree}</p>
                     <p className="text-xs text-muted-foreground">
                       {entry.school} · {entry.period}
@@ -2318,7 +2285,7 @@ export function ProfileView({
 
         {/* Side column */}
         <div className="space-y-4">
-          <SectionCard title="Profile strength" delay={100}>
+          <SectionCard title="Profile completeness" delay={100}>
             <div className="flex items-center gap-4">
               <svg viewBox="0 0 72 72" className="h-20 w-20 shrink-0 -rotate-90">
                 <circle
@@ -2615,7 +2582,7 @@ const FAQS = [
   },
   {
     q: 'Why do I get fewer replies than expected?',
-    a: 'In most cases the resume or the headline is the bottleneck, not the volume. Profiles above 90% strength with a tailored resume get roughly 3x more replies - the Insights tab names your biggest gap.',
+    a: 'In most cases the resume or the headline is the bottleneck, not the volume. Review your saved resume and profile for missing details before applying.',
   },
 ];
 
