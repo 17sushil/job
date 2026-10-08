@@ -89,15 +89,8 @@ const listOf = (value: unknown): string[] => {
       if (typeof item === 'string' && item.trim()) return [item.trim()];
       if (item && typeof item === 'object') {
         const record = object(item);
-        const head = firstOf(record, ['text', 'detail', 'description', 'bullet', 'name', 'value', 'skill', 'category']);
-        /* A skills entry carries a name plus its keywords: keep both. */
-        const keywords = listOf(record.keywords ?? record.items ?? record.list ?? record.skills);
-        if (head && keywords.length) return [`${head}: ${keywords.join(', ')}`];
-        /* Entries with sub-bullets (projects, certifications) keep their lines. */
-        const nested = listOf(record.highlights ?? record.bullets ?? record.points ?? record.details);
-        if (head && nested.length) return [head, ...nested];
-        if (head) return [head];
-        return nested;
+        const line = firstOf(record, ['text', 'detail', 'description', 'bullet', 'name', 'value']);
+        return line ? [line] : [];
       }
       return [];
     });
@@ -231,10 +224,14 @@ export function buildResumeView(parsedProfile: unknown): ResumeView {
     ...listOf(root.qualifications),
   ];
 
-  /* listOf already covers plain strings, bare names and `{name, keywords}`
-     categories — the old extra pass would repeat every category name. */
   const skills = [
     ...listOf(root.skills),
+    ...array(root.skills)
+      .map((item) => {
+        const record = object(item);
+        return firstOf(record, ['name', 'skill', 'text']);
+      })
+      .filter(Boolean),
     ...listOf(root.technical_skills),
     ...listOf(root.technologies),
   ];
