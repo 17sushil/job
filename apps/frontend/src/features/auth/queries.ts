@@ -1,15 +1,17 @@
 'use client';
 import { useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query';
 import { meRequest, type AuthUser } from './api';
 import { apiGet } from '@/lib/api-client';
 export const sessionKey = ['session'] as const;
+// Every session consumer shares a key, query function and freshness policy.
+export const sessionQueryOptions = queryOptions({
+  queryKey: sessionKey,
+  queryFn: ({ signal }) => meRequest(signal),
+  staleTime: 30_000,
+});
 export function useSession() {
-  return useQuery({
-    queryKey: sessionKey,
-    queryFn: ({ signal }) => meRequest(signal),
-    staleTime: 30_000,
-  });
+  return useQuery(sessionQueryOptions);
 }
 export function useSetSession() {
   const client = useQueryClient();

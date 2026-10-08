@@ -33,7 +33,10 @@ describe('query data boundaries', () => {
         ) {
           const effect = node.arguments[0]?.getText(source) ?? '';
           expect(effect, file).not.toMatch(
-            /\b(?:apiGet|apiPost|apiPut|apiPatch|apiDelete|apiBlob|apiClient|axios|\w+Request)\s*[.(]/,
+            /\b(?:apiGet|apiPost|apiPut|apiPatch|apiDelete|apiBlob|apiClient|api|axios|\w+Request)\s*[.(]/,
+          );
+          expect(effect, file).not.toMatch(
+            /\b(?:window\.)?location\.(?:reload|assign|replace)\s*\(/,
           );
         }
         ts.forEachChild(node, visit);

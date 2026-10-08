@@ -17,13 +17,6 @@ export interface AuthUser {
   createdAt: string;
 }
 
-export interface ApiEnvelope<T> {
-  success?: boolean;
-  data?: T;
-  message?: string;
-  errors?: Array<{ field: string; message: string }>;
-}
-
 export interface RegisterPayload {
   identifier: string;
   password: string;

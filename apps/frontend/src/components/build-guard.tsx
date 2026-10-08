@@ -1,16 +1,12 @@
 'use client';
 
+import { Button } from '@/components/ui/button';
 import { buildCheck } from '@/lib/api-client';
 import { clearLegacyStorage } from '@/lib/clear-legacy-storage';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-/**
- * Dev-preview self-heal: client chunks remember the build id of the page
- * that first loaded them. If the dev server has restarted since (new build
- * id), stale chunks would mix with fresh ones and cause impossible bugs -
- * so we force one clean reload.
- */
+/** Deployment changes are offered to the user, never an automatic reload loop. */
 const BIRTH_BUILD =
   typeof document !== 'undefined'
     ? (document
@@ -28,10 +24,17 @@ export function BuildGuard() {
   useEffect(() => {
     clearLegacyStorage();
   }, []);
-  // UI lifecycle only: react to a deployment identifier, never fetch in an effect.
-  useEffect(() => {
-    if (BIRTH_BUILD && build.data?.id && build.data.id !== BIRTH_BUILD)
-      window.location.reload();
-  }, [build.data?.id]);
-  return null;
+  if (!BIRTH_BUILD || !build.data?.id || build.data.id === BIRTH_BUILD)
+    return null;
+  return (
+    <aside
+      role="status"
+      className="fixed bottom-4 right-4 z-[100] flex max-w-sm items-center gap-4 rounded-lg border border-border bg-card p-4 text-sm text-foreground shadow-lg"
+    >
+      <p>An update is available. Save your work before reloading.</p>
+      <Button size="sm" onClick={() => window.location.reload()}>
+        Reload to update
+      </Button>
+    </aside>
+  );
 }
