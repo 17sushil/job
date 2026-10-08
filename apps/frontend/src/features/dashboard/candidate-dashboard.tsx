@@ -284,6 +284,24 @@ export function CandidateDashboard() {
   const [atsFile, setAtsFile] = useState<AtsUploadedFile | null>(null);
   const [atsResult, setAtsResult] = useState<AtsGenerationResult | null>(null);
 
+  /* The ATS resume lives in the database (users.resumePdf + parsedProfile).
+     The in-memory `atsResult` dies on reload, so read the saved copy back and
+     let the profile card keep saying "ready" after a refresh or a new login. */
+  const savedResumeQuery = useQuery<SavedResume | null>({
+    queryKey: ['account', user?.id, 'resume'],
+    queryFn: async ({ signal }) =>
+      (await apiGet<{ resume: SavedResume | null }>('/api/auth/resume', signal)).resume,
+    enabled: !!user,
+    gcTime: 60_000,
+  });
+  const savedAts = savedResumeQuery.data ?? null;
+  const savedAtsName =
+    savedAts && (savedAts.atsPdfBase64 || savedAts.canvas || savedAts.parsedProfile)
+      ? `${savedAts.fileName.replace(/\.[^.]+$/, '')}-ats-resume.pdf`
+      : null;
+  const atsReady = Boolean(atsResult) || Boolean(savedAtsName);
+  const atsName = atsResult?.fileName ?? savedAtsName;
+
   // Notification view state is memory-only, never persisted alongside identity data.
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
 
@@ -645,16 +663,16 @@ export function CandidateDashboard() {
               subtitle="Upload the resume you send out and download the ATS-friendly version"
               delay={220}
             >
-              {atsResult ? (
+              {atsReady ? (
                 <div className="flex flex-wrap items-center gap-4">
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
                     <FileCheck2 className="h-5 w-5" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{atsResult.fileName}</p>
+                    <p className="truncate text-sm font-semibold">{atsName}</p>
                     <p className="text-sm text-muted-foreground">
-                      PDF · {atsResult.pages} page{atsResult.pages === 1 ? '' : 's'} · ready to
-                      send
+                      PDF · {atsResult?.pages ?? 1} page{(atsResult?.pages ?? 1) === 1 ? '' : 's'} ·
+                      saved with your profile
                     </p>
                   </div>
                   <Button onClick={downloadAtsResume}>
@@ -884,8 +902,8 @@ export function CandidateDashboard() {
             checklist={checklist}
             percent={completeness}
             onOpenSettings={() => setView('settings')}
-            atsReady={Boolean(atsResult)}
-            atsFileName={atsResult?.fileName ?? null}
+            atsReady={atsReady}
+            atsFileName={atsName}
             onOpenResume={() => setView('resume')}
             onDownloadAts={downloadAtsResume}
             onSaveProfile={(fields) => persistProfile({ ...profile, ...fields })}

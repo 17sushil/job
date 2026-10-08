@@ -9,6 +9,7 @@ import { adminRoutes } from './modules/admin/admin.routes.js';
 import { applicationRoutes } from './modules/application/application.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { candidateRoutes } from './modules/candidate/candidate.routes.js';
+import { applicantRoutes } from './modules/applicant/applicant.routes.js';
 import { jobRoutes } from './modules/job/job.routes.js';
 
 export const app = express();
@@ -43,6 +44,7 @@ app.get('/health', async (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/applications', applicationRoutes);
 app.use('/api/candidates', candidateRoutes);
+app.use('/api/applicants', applicantRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/admin', adminRoutes);
 
