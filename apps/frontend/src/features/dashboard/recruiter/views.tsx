@@ -1,5 +1,4 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
 
 import {
   BadgeCheck,
@@ -11,6 +10,7 @@ import {
   Clock,
   Eye,
   FileText,
+  Globe,
   GraduationCap,
   Mail,
   MapPin,
@@ -30,9 +30,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useSession, useSetSession } from '@/features/auth/queries';
-import { apiBlob } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { SourcesDonut, WeeklyBars } from './charts';
+import { ContactRow, ResumePaper } from './resume-paper';
 
 import { RecruiterProfileForm } from '../recruiter-profile-form';
 import {
@@ -119,8 +119,10 @@ function MatchBar({ value }: { value: number }) {
   );
 }
 
-/* Applicant details come from the API. Resume previews are fetched with the
- * authenticated session; only the server-watermarked PDF is exposed here. */
+/* Applicant details come from /api/applicants. Contact values arrive as one-way
+ * digests — the real email / phone / LinkedIn never reach the browser — and the
+ * CV renders from the parsed JSON as a paper page (a PDF's text layer cannot be
+ * blurred, so no resume file is served to recruiters here). */
 
 interface DrawerProps {
   applicant: Applicant | null;
@@ -139,21 +141,8 @@ export function ApplicantDrawer({
 }: DrawerProps) {
   const [scheduling, setScheduling] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
-  const [resumeUrl, setResumeUrl] = useState<string | null>(null);
   const { data: viewer } = useSession();
-  const resume = useQuery({ queryKey: ['account', viewer?.id, 'recruiter-resume', applicant?.candidateId ?? applicant?.id],
-    queryFn: ({ signal }) => apiBlob(applicant!.resumeUrl!, signal), enabled: !!viewer && resumeOpen && !!applicant?.resumeUrl,
-    staleTime: 0, gcTime: 0 });
-  const resumeError = resume.error?.message;
   useEffect(() => { setResumeOpen(false); }, [applicant?.id]);
-  // Object URLs are browser resources; the query owns the PDF network request.
-  useEffect(() => {
-    setResumeUrl(null);
-    if (!resumeOpen || !resume.data) return;
-    const url = URL.createObjectURL(resume.data);
-    setResumeUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [resumeOpen, resume.data]);
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape') { if (resumeOpen) setResumeOpen(false); else onClose(); }
@@ -172,13 +161,22 @@ export function ApplicantDrawer({
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="font-semibold">{applicant.name} — JobDev resume</h3>
               <div className="flex items-center gap-3">
-                {resumeUrl && <a href={resumeUrl} download="JobDev-candidate-resume.pdf" className="text-sm font-semibold text-primary">Download PDF</a>}
                 <Button variant="ghost" size="sm" onClick={() => setResumeOpen(false)} aria-label="Close resume"><X className="h-4 w-4" /></Button>
               </div>
             </div>
-            {resumeError ? <p role="alert" className="text-sm text-destructive">{resumeError}</p>
-              : resumeUrl ? <iframe title="JobDev-watermarked candidate resume" src={resumeUrl} className="min-h-0 w-full flex-1 rounded-lg border border-border bg-white" />
-              : <p role="status" className="text-sm text-muted-foreground">Preparing the watermarked resume…</p>}
+            {applicant.resume ? (
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-muted/30 p-2 scrollbar-slim">
+                <ResumePaper
+                  resume={applicant.resume}
+                  contact={applicant.contact}
+                  watermarkLabel={viewer?.email ?? viewer?.name ?? 'Recruiter view'}
+                />
+              </div>
+            ) : (
+              <p role="status" className="text-sm text-muted-foreground">
+                No parsed resume on this profile yet — contact details stay hidden either way.
+              </p>
+            )}
           </section>
         </div>
       )}
@@ -212,14 +210,26 @@ export function ApplicantDrawer({
         </div>
 
         <div className="flex-1 space-y-5 p-6">
-          {/* Contact */}
+          {/* Contact — the API replaces email / phone / links with a one-way
+              digest before they are sent; location stays readable on purpose
+              (screening data, not contact data). */}
           <section className="space-y-2 text-sm">
-            {applicant.email && <p className="flex items-center gap-2 text-muted-foreground">
-              <Mail className="h-4 w-4 text-primary" /> {applicant.email}
-            </p>}
-            {applicant.phone && <p className="flex items-center gap-2 text-muted-foreground">
-              <Phone className="h-4 w-4 text-primary" /> {applicant.phone}
-            </p>}
+            <p>
+              <ContactRow icon={Mail} value={applicant.email} label="Email" masked={applicant.contactMasked} />
+            </p>
+            <p>
+              <ContactRow icon={Phone} value={applicant.phone} label="Phone" masked={applicant.contactMasked} />
+            </p>
+            {applicant.linkedin ? (
+              <p>
+                <ContactRow icon={Globe} value={applicant.linkedin} label="LinkedIn" masked={applicant.contactMasked} />
+              </p>
+            ) : null}
+            {(applicant.contact?.other ?? []).map((link) => (
+              <p key={link.label}>
+                <ContactRow icon={Globe} value={link.token ?? ''} label={link.label} masked={applicant.contactMasked} />
+              </p>
+            ))}
             {(applicant.location || !profileOnly) && <p className="flex items-center gap-2 text-muted-foreground">
               <MapPin className="h-4 w-4 text-primary" /> {applicant.location}{!profileOnly && ' · '}
               {!profileOnly && <>applied {applicant.appliedDaysAgo}d ago</>}
@@ -250,9 +260,9 @@ export function ApplicantDrawer({
           {applicant.skills.length > 0 && <section>
             <h4 className="mb-2 text-sm font-bold">Skills</h4>
             <div className="flex flex-wrap gap-1.5">
-              {applicant.skills.map((skill) => (
+              {applicant.skills.map((skill, index) => (
                 <span
-                  key={skill}
+                  key={`${skill}-${index}`}
                   className="animate-pop-in rounded-full bg-primary-light px-2.5 py-1 text-xs font-semibold text-primary-dark"
                 >
                   {skill}
@@ -264,9 +274,9 @@ export function ApplicantDrawer({
           {applicant.experience.length > 0 && <section>
             <h4 className="mb-2 text-sm font-bold">Experience</h4>
             <ul className="space-y-2.5">
-              {applicant.experience.map((entry) => (
+              {applicant.experience.map((entry, index) => (
                 <li
-                  key={entry.company}
+                  key={`${entry.company}-${entry.period}-${index}`}
                   className="rounded-xl border border-border p-3"
                 >
                   <p className="text-sm font-semibold">{entry.role}</p>
@@ -287,11 +297,15 @@ export function ApplicantDrawer({
 
           <section>
             <h4 className="mb-1.5 font-semibold">Resume / CV</h4>
-            <Button variant="outline" className="w-full" disabled={!applicant.resumeUrl} onClick={() => setResumeOpen(true)}>
+            <Button variant="outline" className="w-full" disabled={!applicant.resume} onClick={() => setResumeOpen(true)}>
               <FileText className="h-4 w-4" />
-              {applicant.resumeUrl ? 'View resume (PDF)' : 'No resume uploaded'}
+              {applicant.resume ? 'View resume' : 'No resume uploaded'}
             </Button>
-            {applicant.resumeUrl && <p className="mt-2 text-xs text-muted-foreground">Latest saved resume · branded with JobDev.</p>}
+            {applicant.resume && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Parsed from {applicant.resumeFileName ?? 'the uploaded file'} · contact details hidden
+              </p>
+            )}
           </section>
         </div>
 
@@ -1579,4 +1593,70 @@ export function AnalyticsView() {
       </div>
     </div>
   );
+}
+
+
+/* --- /api/applicants row → Applicant ----------------------------------- */
+
+/** One row of `GET /api/applicants` (masked contact + parsed CV). */
+export interface ApplicantApiRow {
+  id: string;
+  status: string;
+  appliedAt: string;
+  job: { id: string; title: string; company: string; location: string | null } | null;
+  candidate: {
+    id: string;
+    name: string;
+    location: string | null;
+    contactMode: 'blurred';
+    contact: {
+      email: { token: string | null };
+      phone: { token: string | null };
+      linkedin: { token: string | null };
+      other: Array<{ label: string; token: string | null }>;
+    };
+    resumeFileName: string | null;
+    hasResume: boolean;
+    resume: NonNullable<Applicant['resume']>;
+  };
+}
+
+const APPLICANT_STATUS_MAP: Record<string, ApplicantStatus> = {
+  NEW: 'New',
+  SHORTLISTED: 'Shortlisted',
+  INTERVIEW: 'Interview',
+  HIRED: 'Hired',
+  REJECTED: 'Rejected',
+};
+
+export function mapApplicantRow(row: ApplicantApiRow): Applicant {
+  const applied = row.appliedAt ? new Date(row.appliedAt) : null;
+  const days = applied ? Math.max(0, Math.round((Date.now() - applied.getTime()) / 86_400_000)) : 0;
+  const resume = row.candidate.resume;
+  return {
+    id: row.id,
+    candidateId: row.candidate.id,
+    name: row.candidate.name,
+    job: row.job?.title ?? '',
+    match: 0,
+    status: APPLICANT_STATUS_MAP[row.status.toUpperCase()] ?? 'New',
+    appliedDaysAgo: days,
+    email: row.candidate.contact.email.token ?? '',
+    phone: row.candidate.contact.phone.token ?? '',
+    linkedin: row.candidate.contact.linkedin.token ?? '',
+    contactMasked: row.candidate.contactMode === 'blurred',
+    contact: row.candidate.contact as Applicant['contact'],
+    location: row.candidate.location ?? '',
+    summary: resume.summary,
+    skills: resume.skills,
+    experience: resume.experience.map((entry) => ({
+      role: entry.role,
+      company: entry.company,
+      period: entry.period,
+    })),
+    education: resume.education.join(' · '),
+    resume,
+    resumeFileName: row.candidate.resumeFileName,
+    hasResume: row.candidate.hasResume,
+  };
 }

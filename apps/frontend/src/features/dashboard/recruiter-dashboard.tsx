@@ -37,8 +37,10 @@ import {
   HelpView,
   JobDrawer,
   JobsView,
+  mapApplicantRow,
   SettingsView,
   StatusChip,
+  type ApplicantApiRow,
 } from './recruiter/views';
 
 const daysSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
@@ -148,7 +150,12 @@ export function RecruiterDashboard() {
   const jobsQuery = useQuery({ queryKey: jobsKey, enabled: !!user,
     queryFn: async ({ signal }) => (await apiGet<{ jobs: JobRow[] }>('/api/jobs/mine', signal)).jobs.map(mapApiJob) });
   const applicantsQuery = useQuery({ queryKey: applicantsKey, enabled: !!user,
-    queryFn: async ({ signal }) => (await apiGet<{ applicants: Applicant[] }>('/api/applications/recruiter', signal)).applicants });
+    /* Always re-read: a candidate can replace their resume after applying, and
+       the app default (30 s stale + no refetch on focus) kept showing the old
+       one in an open tab. */
+    staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: true,
+    /* Masked at the source: contact values are one-way tokens already. */
+    queryFn: async ({ signal }) => (await apiGet<{ applicants: ApplicantApiRow[] }>('/api/applicants', signal)).applicants.map(mapApplicantRow) });
   const jobs = jobsQuery.data ?? INITIAL_JOBS;
   const applicants = applicantsQuery.data ?? [];
   const setJobs = (update: (current: Job[]) => Job[]) => client.setQueryData(jobsKey, update(jobs));
