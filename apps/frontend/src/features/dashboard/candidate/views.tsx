@@ -2626,4 +2626,82 @@ export function StagePills({
   );
 }
 
-export { EmptyState,MatchBar,matchTone,SectionCard,WORK_MODE_ICON };
+export function CandidateProfileViewsView({
+  views = [],
+  totalViews = 0,
+  isLoading = false,
+}: {
+  views?: Array<{
+    id: string;
+    viewedAt: string;
+    recruiterId: string;
+    recruiterName: string;
+    companyName: string;
+    recruiterEmail: string;
+  }>;
+  totalViews?: number;
+  isLoading?: boolean;
+}) {
+  return (
+    <div className="space-y-6 animate-fade-in-up">
+      <div>
+        <h2 className="text-xl font-bold">Profile Views</h2>
+        <p className="text-sm text-muted-foreground">
+          {totalViews === 1
+            ? '1 recruiter has viewed your profile.'
+            : `${totalViews} recruiters have viewed your profile.`}
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {isLoading && (
+          <p role="status" className="text-sm text-muted-foreground">
+            Loading view history…
+          </p>
+        )}
+        {!isLoading && views.length === 0 && (
+          <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-sm">
+            <Eye className="mx-auto mb-3 h-10 w-10 text-muted-foreground/50" />
+            <h3 className="font-semibold">No profile views yet</h3>
+            <p className="text-sm text-muted-foreground">
+              When recruiters view your profile or resume, they will appear here.
+            </p>
+          </div>
+        )}
+        {views.map((view) => (
+          <div
+            key={view.id}
+            className="flex items-center justify-between rounded-xl border border-border bg-card p-4 shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                {view.companyName?.[0]?.toUpperCase() ||
+                  view.recruiterName?.[0]?.toUpperCase() ||
+                  'R'}
+              </span>
+              <div>
+                <p className="font-semibold">{view.recruiterName}</p>
+                <p className="text-sm text-muted-foreground">
+                  {view.companyName}
+                  {view.recruiterEmail ? ` · ${view.recruiterEmail}` : ''}
+                </p>
+              </div>
+            </div>
+            <p className="text-xs font-medium text-muted-foreground">
+              Viewed on{' '}
+              {view.viewedAt
+                ? new Date(view.viewedAt).toLocaleDateString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                  })
+                : 'Recently'}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export { EmptyState, MatchBar, matchTone, SectionCard, WORK_MODE_ICON };

@@ -114,7 +114,7 @@ export const getProfileViews: RequestHandler = async (req, res, next) => {
 
 export const getOwnProfileViews: RequestHandler = async (req, res, next) => {
   try {
-    const totalViews = await AppDataSource.getRepository(ProfileView)
+    const views = await AppDataSource.getRepository(ProfileView)
       .createQueryBuilder('view')
       .innerJoin(
         User,
@@ -125,8 +125,32 @@ export const getOwnProfileViews: RequestHandler = async (req, res, next) => {
       .where('view.candidateId = :candidateId', {
         candidateId: req.user!.userId,
       })
-      .getCount();
-    res.json({ success: true, data: { totalViews } });
+      .select([
+        'view.id AS "id"',
+        'view.createdAt AS "viewedAt"',
+        'recruiter.userId AS "recruiterId"',
+        'recruiter.name AS "recruiterName"',
+        'recruiter.companyName AS "companyName"',
+        'recruiter.email AS "recruiterEmail"',
+      ])
+      .orderBy('view.createdAt', 'DESC')
+      .addOrderBy('view.id', 'DESC')
+      .getRawMany();
+
+    res.json({
+      success: true,
+      data: {
+        totalViews: views.length,
+        views: views.map((v) => ({
+          id: v.id,
+          viewedAt: v.viewedAt,
+          recruiterId: v.recruiterId,
+          recruiterName: v.recruiterName || 'Recruiter',
+          companyName: v.companyName || 'Company',
+          recruiterEmail: v.recruiterEmail || '',
+        })),
+      },
+    });
   } catch (error) {
     next(error);
   }

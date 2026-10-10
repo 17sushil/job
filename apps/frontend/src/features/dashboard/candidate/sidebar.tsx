@@ -4,6 +4,7 @@ import {
   Bookmark,
   Briefcase,
   Compass,
+  Eye,
   FileSearch,
   HelpCircle,
   LayoutDashboard,
@@ -23,6 +24,7 @@ export type CandidateView =
   | 'resume'
   | 'saved'
   | 'jobs'
+  | 'views'
   | 'profile'
   | 'settings'
   | 'help';
@@ -37,6 +39,7 @@ export const NAV_ITEMS: Array<{
   { id: 'jobs', label: 'Find jobs', icon: Compass, section: 'main' },
   { id: 'applications', label: 'My applications', icon: Briefcase, section: 'main' },
   // { id: 'interviews', label: 'Interviews', icon: CalendarCheck, section: 'main' },
+  { id: 'views', label: 'Who viewed me', icon: Eye, section: 'main' },
   { id: 'resume', label: 'Build resume', icon: FileSearch, section: 'main' },
   { id: 'saved', label: 'Saved jobs', icon: Bookmark, section: 'main' },
   { id: 'profile', label: 'My profile', icon: UserRound, section: 'general' },
