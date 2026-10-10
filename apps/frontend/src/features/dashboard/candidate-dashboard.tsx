@@ -57,6 +57,7 @@ import {
 import {
   ApplicationDrawer,
   ApplicationsView,
+  CandidateProfileViewsView,
   EmptyState,
   HelpView,
   InterviewsView,
@@ -257,7 +258,17 @@ export function CandidateDashboard() {
   const client = useQueryClient();
   const jobsKey = ['account', user?.id, 'jobs'];
   const applicationsKey = ['account', user?.id, 'applications'];
-  const profileViewsQuery = useAccountQuery<{ totalViews: number }>('/api/candidates/views/me');
+  const profileViewsQuery = useAccountQuery<{
+    totalViews: number;
+    views: Array<{
+      id: string;
+      viewedAt: string;
+      recruiterId: string;
+      recruiterName: string;
+      companyName: string;
+      recruiterEmail: string;
+    }>;
+  }>('/api/candidates/views/me');
   const jobsQuery = useQuery({ queryKey: jobsKey, enabled: !!user,
     queryFn: async ({ signal }) => (await apiGet<{ jobs: JobRow[] }>('/api/jobs', signal)).jobs.map(mapLiveJob) });
   const applicationsQuery = useQuery({ queryKey: applicationsKey, enabled: !!user,
@@ -440,8 +451,8 @@ export function CandidateDashboard() {
       value: profileViewsQuery.data?.totalViews ?? 0,
       delta: `Profile ${completeness}% complete`,
       icon: Eye,
-      hint: 'Open your profile',
-      go: () => setView('profile'),
+      hint: 'See who viewed your profile',
+      go: () => setView('views'),
     },
   ];
 
@@ -540,6 +551,7 @@ export function CandidateDashboard() {
           applications: activeApplications.length,
           interviews: upcomingInterviews.length,
           saved: savedIds.length,
+          views: profileViewsQuery.data?.totalViews,
         }}
         strengthPercent={completeness}
         missingSignals={missingSignals}
@@ -793,6 +805,14 @@ export function CandidateDashboard() {
             onOpen={setSelectedApplication}
             onWithdraw={withdrawApplication}
             onBrowseJobs={() => setView('jobs')}
+          />
+        )}
+
+        {view === 'views' && (
+          <CandidateProfileViewsView
+            views={profileViewsQuery.data?.views ?? []}
+            totalViews={profileViewsQuery.data?.totalViews ?? 0}
+            isLoading={profileViewsQuery.isPending}
           />
         )}
 
