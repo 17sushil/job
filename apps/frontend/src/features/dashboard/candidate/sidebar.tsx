@@ -3,13 +3,14 @@
 import {
   Bookmark,
   Briefcase,
-  CalendarCheck,
   Compass,
+  Eye,
   FileSearch,
   HelpCircle,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
+  MessagesSquare,
   Settings,
   Sparkles,
   UserRound,
@@ -20,10 +21,12 @@ import { cn } from '@/lib/utils';
 export type CandidateView =
   | 'overview'
   | 'applications'
+  | 'messages'
   | 'interviews'
   | 'resume'
   | 'saved'
   | 'jobs'
+  | 'views'
   | 'profile'
   | 'settings'
   | 'help';
@@ -37,7 +40,9 @@ export const NAV_ITEMS: Array<{
   { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
   { id: 'jobs', label: 'Find jobs', icon: Compass, section: 'main' },
   { id: 'applications', label: 'My applications', icon: Briefcase, section: 'main' },
-  { id: 'interviews', label: 'Interviews', icon: CalendarCheck, section: 'main' },
+  { id: 'messages', label: 'Messages', icon: MessagesSquare, section: 'main' },
+  // { id: 'interviews', label: 'Interviews', icon: CalendarCheck, section: 'main' },
+  { id: 'views', label: 'Who viewed me', icon: Eye, section: 'main' },
   { id: 'resume', label: 'Build resume', icon: FileSearch, section: 'main' },
   { id: 'saved', label: 'Saved jobs', icon: Bookmark, section: 'main' },
   { id: 'profile', label: 'My profile', icon: UserRound, section: 'general' },
@@ -211,7 +216,7 @@ export function ProfileStrengthCard({
     <div className="animate-fade-in-up rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-primary" />
-        <p className="text-sm font-bold">Profile strength</p>
+        <p className="text-sm font-bold">Profile completeness</p>
         <span className="ml-auto text-sm font-bold text-primary-dark">{percent}%</span>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
@@ -222,7 +227,7 @@ export function ProfileStrengthCard({
       </div>
       <p className="mt-2 text-xs leading-snug text-muted-foreground">
         {missing > 0
-          ? `${missing} signal${missing === 1 ? '' : 's'} left - profiles above 90% get roughly 3x more recruiter replies.`
+          ? `${missing} profile item${missing === 1 ? '' : 's'} still incomplete. Based on your saved resume and profile fields.`
           : 'Fully complete. Keep it fresh as your experience grows.'}
       </p>
       <button

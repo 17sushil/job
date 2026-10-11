@@ -2,11 +2,15 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
 module.exports = {
-  allowedDevOrigins: ['*.e2b.app'],
+  // Canvas saves include bounded ATS extraction before the database transaction.
+  experimental: { proxyTimeout: 90000 },
+  allowedDevOrigins: ['*.e2b.app', '*.ritikthakur.com.np'],
   async headers() {
     return [
       {
-        source: '/:path*',
+        // Private API responses must never enter an HTTP cache. Let Next manage
+        // caching for fingerprinted JS/CSS instead of disabling it globally.
+        source: '/api/:path*',
         headers: [
           { key: 'Cache-Control', value: 'no-store, max-age=0' },
           { key: 'Pragma', value: 'no-cache' },

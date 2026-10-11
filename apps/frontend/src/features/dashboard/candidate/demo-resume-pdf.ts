@@ -380,7 +380,7 @@ export function resumePdf(document: ResumeDocument): { blob: Blob; pages: number
 
 /* ========================================================================== */
 /*  Canvas model — the free-placement page the Canva-style editor works on.   */
-/*  Reconstructed to match resume-editor.tsx / edit-draft.ts usage exactly.   */
+/*  Reconstructed to match resume-editor.tsx usage exactly.   */
 /* ========================================================================== */
 
 export type CanvasFont = 'helvetica' | 'times' | 'courier';
@@ -877,7 +877,7 @@ export function resumePdfFromCanvas(canvas: CanvasDocument): { blob: Blob; pages
   for (const [key, id] of Object.entries(fontIds)) {
     objects.push({
       id,
-      body: `<< /Type /Font /Subtype /Type1 /BaseFont ${CANVAS_FONT_FACES[key]} /Encoding /WinAnsiEncoding >>`,
+      body: `<< /Type /Font /Subtype /Type1 /BaseFont /${CANVAS_FONT_FACES[key]} /Encoding /WinAnsiEncoding >>`,
     });
   }
   for (const def of imageDefs) {
@@ -909,7 +909,7 @@ export function resumePdfFromCanvas(canvas: CanvasDocument): { blob: Blob; pages
     if (object.raw) {
       push(`${object.id} 0 obj\n${object.body}`);
       push(object.raw);
-      push('\nendobj\n');
+      push('\nendstream\nendobj\n');
     } else {
       push(`${object.id} 0 obj\n${object.body}\nendobj\n`);
     }

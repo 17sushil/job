@@ -9,7 +9,8 @@ import {
   LogOut,
   Settings,
   Briefcase,
-  Users,
+  MessagesSquare,
+  Users, Eye,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -18,6 +19,8 @@ export type RecruiterView =
   | 'overview'
   | 'jobs'
   | 'applicants'
+  | 'messages'
+  | 'harvested'
   | 'analytics'
   | 'company'
   | 'settings'
@@ -32,6 +35,8 @@ export const NAV_ITEMS: Array<{
   { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, section: 'main' },
   { id: 'jobs', label: 'Post job', icon: Briefcase, section: 'main' },
   { id: 'applicants', label: 'Applicants', icon: Users, section: 'main' },
+  { id: 'messages', label: 'Messages', icon: MessagesSquare, section: 'main' },
+  { id: 'harvested', label: 'Viewed candidates', icon: Eye, section: 'main' },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, section: 'main' },
   { id: 'company', label: 'Company profile', icon: Building2, section: 'general' },
   { id: 'settings', label: 'Settings', icon: Settings, section: 'general' },

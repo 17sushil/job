@@ -1,6 +1,8 @@
 'use client';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { parseStoredProfile } from './profile-data';
+import { restoreFile, restoreResult, type SavedResume } from './saved-resume';
 
-import { useEffect, useRef, useState } from 'react';
 import {
   Briefcase,
   CheckCircle2,
@@ -22,40 +24,46 @@ import {
   UploadCloud,
   X,
 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
-import { apiClient } from '@/lib/api-client';
-import { readApiError } from '@/features/auth/api';
-import { useAuthStore } from '@/store/auth';
+import { uploadResumeRequest, type AuthUser } from '@/features/auth/api';
+import { useSession, useSetSession } from '@/features/auth/queries';
+import { apiGet } from '@/lib/api-client';
+import { fileAsBase64 } from '@/lib/files';
 
 import {
   ATS_ACCEPT_ATTR,
   ATS_ACCEPTED_LABEL,
-  type AtsGenerationResult,
-  type AtsUploadedFile,
   formatBytes,
-  parseAtsResume,
-  canParseResume,
   toResumeDocument,
   toUploadedFile,
   triggerDownload,
   validateAtsUpload,
+  type AtsGenerationResult,
+  type AtsUploadedFile,
 } from './ats-service';
 import {
   flowToCanvas,
   resumePdf,
   resumePdfFromCanvas,
   type CanvasDocument,
-  type CanvasTextObject,
   type ResumeDocument,
 } from './demo-resume-pdf';
-import { loadDraft, saveDraft } from './edit-draft';
-import { ResumeEditor } from './resume-editor';
+
+import dynamic from 'next/dynamic';
 import type { CandidateProfile } from './mock-data';
+const ResumeEditor = dynamic(() => import('./resume-editor').then(module => module.ResumeEditor), { ssr: false, loading: () => <p role="status">Opening editor…</p> });
+
+/** Base64 → PDF blob (the ATS PDF the backend stored on the profile). */
+function base64Pdf(base64: string): Blob {
+  const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+  return new Blob([bytes], { type: 'application/pdf' });
+}
 
 /* The sketch caps the uploaded resume at 1 MB (PDF or Word). */
 const MAX_RESUME_BYTES = 1_000_000;
@@ -63,24 +71,12 @@ const MAX_RESUME_BYTES = 1_000_000;
 type StudioTab = 'preview' | 'experience' | 'qualifications' | 'skills' | 'review';
 
 const TABS: Array<{ id: StudioTab; label: string; icon: typeof Eye }> = [
-  { id: 'preview', label: 'Canvas Preview', icon: Eye },
+  { id: 'preview', label: 'ATS preview', icon: Eye },
   { id: 'experience', label: 'Experience', icon: Briefcase },
   { id: 'qualifications', label: 'Qualifications', icon: GraduationCap },
   { id: 'skills', label: 'Skills', icon: Sparkles },
   { id: 'review', label: 'Overall review', icon: Gauge },
 ];
-
-function readAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result ?? '');
-      resolve(result.slice(result.indexOf(',') + 1));
-    };
-    reader.onerror = () => reject(new Error('Could not read the file'));
-    reader.readAsDataURL(file);
-  });
-}
 
 function fileKindLabel(kind: AtsUploadedFile['kind']): string {
   return kind === 'pdf' ? 'PDF' : 'Word';
@@ -123,27 +119,36 @@ function ResumePreview({ document }: { document: ResumeDocument }) {
 /*                                   View                                     */
 /* -------------------------------------------------------------------------- */
 
-export function ResumeStudioView({
-  profile,
-  file,
-  onFileChange,
-  result,
-  onResultChange,
-  onNotify,
-  onSave,
-}: {
+interface StudioProps {
   profile: CandidateProfile;
   file: AtsUploadedFile | null;
   onFileChange: (file: AtsUploadedFile | null) => void;
   result: AtsGenerationResult | null;
   onResultChange: (result: AtsGenerationResult | null) => void;
   onNotify?: (message: string) => void;
-  onSave: (next: CandidateProfile) => void;
-}) {
-  const setUser = useAuthStore((state) => state.setUser);
+  onSave: (next: CandidateProfile) => Promise<void>;
+}
+export function ResumeStudioView(props: StudioProps) {
+  const { data: user } = useSession();
+  const saved = useQuery({ queryKey: ['account', user?.id, 'resume'], enabled: !!user?.resumeFileName,
+    queryFn: async ({ signal }) => (await apiGet<{ resume: SavedResume | null }>('/api/auth/resume', signal)).resume,
+    gcTime: 60_000 });
+  if (user?.resumeFileName && saved.isPending) return <p role="status">Loading your saved resume…</p>;
+  if (saved.isError) return <div role="alert"><p>{saved.error.message}</p><Button onClick={() => saved.refetch()}>Retry loading saved resume</Button></div>;
+  return <ResumeStudioEditor key={user?.id} {...props} savedResume={saved.data ?? null} />;
+}
+function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result: incomingResult, onResultChange, onNotify, onSave, savedResume }: StudioProps & { savedResume: SavedResume | null }) {
+  const { data: user } = useSession();
+  const setUser = useSetSession();
   const inputRef = useRef<HTMLInputElement>(null);
-  const rawFileRef = useRef<File | null>(null);
-
+  const [initialFile] = useState(() => restoreFile(savedResume));
+  const rawFileRef = useRef<File | null>(initialFile);
+  const [usingSaved, setUsingSaved] = useState(true);
+  const [restoredResult] = useState(() => restoreResult(savedResume));
+  const file = incomingFile ?? (rawFileRef.current ? toUploadedFile(rawFileRef.current) : null);
+  const result = incomingResult ?? (usingSaved ? restoredResult : null);
+  const client = useQueryClient();
+  const upload = useMutation({ mutationFn: (args: Parameters<typeof uploadResumeRequest>) => uploadResumeRequest(...args) });
   const [tab, setTab] = useState<StudioTab>('preview');
   /* Local working copy; the Save button pushes it up (and to the database). */
   const [draft, setDraft] = useState<CandidateProfile>(profile);
@@ -156,12 +161,11 @@ export function ResumeStudioView({
   const [editing, setEditing] = useState<CanvasDocument | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
-
-  /* Keep the draft in step when the orchestrator re-hydrates the profile. */
-  useEffect(() => {
-    setDraft(profile);
-  }, [profile]);
-
+  const [saving, setSaving] = useState(false);
+  /* Shown after an extraction: download the ATS PDF, edit it, or skip. */
+  const [needsDecision, setNeedsDecision] = useState(false);
+  const saveLock = useRef(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   useEffect(() => {
     if (!result || result.document) {
       setPdfPreviewUrl(null);
@@ -200,6 +204,7 @@ export function ResumeStudioView({
       setError('Only PDF and Word files are supported. Export your resume to one of those first.');
       return;
     }
+    setUsingSaved(false);
     setError(null);
     onFileChange(uploaded);
     rawFileRef.current = candidate;
@@ -222,48 +227,53 @@ export function ResumeStudioView({
     setError(null);
     setProgress({ step: 'Extracting resume…', percent: 40 });
     try {
-      const dataBase64 = await readAsBase64(candidate);
-      const res = await apiClient('/api/auth/resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: candidate.name, dataBase64 }),
-      });
-      if (!res.ok) {
-        throw new Error(await readApiError(res));
-      }
-      const body = (await res.json()) as {
-        data: {
-          user: Parameters<typeof setUser>[0];
-          parsed: Record<string, unknown> | null;
-          atsError: string | null;
-        };
-      };
-      setUser(body.data.user);
+      const dataBase64 = await fileAsBase64(candidate);
+      const data = await upload.mutateAsync([candidate.name, dataBase64]);
+      setUser(data.user);
+      setDraft(current => ({ ...current, ...parseStoredProfile(data.user.parsedProfile) }));
+      client.setQueryData(['account', user?.id, 'resume'], { fileName: candidate.name, dataBase64, parsedProfile: data.user.parsedProfile, canvas: null, uploadedAt: new Date().toISOString() });
       setProgress({ step: 'Saved', percent: 100 });
-      if (body.data.parsed) {
-        const document = toResumeDocument(body.data.parsed);
-        const { blob, pages } = resumePdf(document);
+      if (data.parsed) {
+        const document = toResumeDocument(data.parsed);
         const slug = candidate.name
           .trim()
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-|-$/g, '');
-        onResultChange({
-          fileName: `${slug || 'resume'}-ats-resume.pdf`,
-          blob,
-          pages,
+        const fileName = `${slug || 'resume'}-ats-resume.pdf`;
+        const base = {
+          fileName,
           generatedAt: new Date().toISOString(),
-          engine: 'service',
-          note: 'Data extracted by the ATS service and saved to your account.',
-          document,
+          engine: 'service' as const,
           canvas: flowToCanvas(document),
-        });
+        };
+        /* Preferred: the 1-page ATS PDF the service built — already stored on
+           the profile. The browser render is only a fallback for when the
+           service is not configured. */
+        if (data.atsPdfBase64) {
+          onResultChange({
+            ...base,
+            blob: base64Pdf(data.atsPdfBase64),
+            pages: 1,
+            note: 'Your 1-page ATS resume is saved to your profile — download it, or edit it in the canvas editor.',
+          });
+        } else {
+          const { blob, pages } = resumePdf(document);
+          onResultChange({
+            ...base,
+            blob,
+            pages,
+            note: 'Data extracted and saved to your account.',
+            document,
+          });
+        }
+        setNeedsDecision(true);
         setTab('preview');
         onNotify?.('Resume extracted and saved to your account.');
       } else {
         onNotify?.(
-          body.data.atsError
-            ? `Resume saved. ${body.data.atsError}.`
+          data.atsError
+            ? `Resume saved. ${data.atsError}.`
             : 'Resume saved to your account.',
         );
       }
@@ -285,50 +295,32 @@ export function ResumeStudioView({
   async function openEditor() {
     if (editBusy) return;
     setError(null);
+    setSaveError(null);
 
-    /* This session's canvas first, then the draft kept by the draft store so
-       an edit survives a reload; only then flow the parsed text onto pages. */
+    /* The canvas restored from our database is authoritative after a save. */
     if (result?.canvas) {
       setEditing(result.canvas);
       return;
-    }
-    if (result) {
-      const stored = await loadDraft({
-        ...(result.jobId ? { jobId: result.jobId } : {}),
-        ...(result.fileName ? { fileName: result.fileName } : {}),
-      });
-      if (stored) {
-        setEditing(stored.canvas);
-        const { blob, pages } = resumePdfFromCanvas(stored.canvas);
-        onResultChange({
-          ...result,
-          blob,
-          pages,
-          canvas: stored.canvas,
-          note: 'Reopened from your saved edit — Download PDF matches what you edited.',
-        });
-        return;
-      }
     }
     if (result?.document) {
       setEditing(flowToCanvas(result.document));
       return;
     }
-    if (!result?.parseUrl && !canParseResume()) {
-      setError(
-        'Editing a file from the service needs the parser endpoint (NEXT_PUBLIC_ATS_PARSE_ENDPOINT).',
-      );
-      return;
-    }
-
     setEditBusy(true);
     try {
-      const parsed = await parseAtsResume({
-        parseUrl: result?.parseUrl ?? null,
-        jobId: result?.jobId ?? null,
-        rawFile: rawFileRef.current,
-      });
-      setEditing(flowToCanvas(parsed));
+      let parsed = savedResume?.parsedProfile;
+      if (rawFileRef.current) {
+        const current = rawFileRef.current;
+        const base64 = await fileAsBase64(current);
+        const data = await upload.mutateAsync([current.name, base64]);
+        setUser(data.user);
+        parsed = data.parsed;
+        client.setQueryData(['account', user?.id, 'resume'], { fileName: current.name, dataBase64: base64, parsedProfile: data.user.parsedProfile, canvas: null, uploadedAt: new Date().toISOString() });
+        if (!parsed) throw new Error(data.atsError ?? 'No structured resume sections are available.');
+      }
+      const document = toResumeDocument(parsed);
+      if (!document.sections.length) throw new Error('No structured resume sections are available. Please retry extraction.');
+      setEditing(flowToCanvas(document));
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'Could not open the editor.');
     } finally {
@@ -336,42 +328,35 @@ export function ResumeStudioView({
     }
   }
 
+  /* The editor's action: render the canvas and hand the file to the device.
+     Nothing is written to the profile — the saved ATS resume stays as it is. */
   async function saveEdit(canvas: CanvasDocument) {
+    if (saveLock.current) return;
+    saveLock.current = true;
+    setSaving(true);
+    setSaveError(null);
     try {
       const { blob, pages } = resumePdfFromCanvas(canvas);
-      const stored = await saveDraft(canvas, {
-        ...(result?.jobId ? { jobId: result.jobId } : {}),
-        ...(result?.fileName ? { fileName: result.fileName } : {}),
-      });
-      const draftNote = stored.ok
-        ? ' Your edit JSON is saved and will reopen next time.'
-        : ` The edit JSON did not save: ${stored.reason}`;
-      const title = (canvas.pages[0]?.objects ?? []).find(
-        (object): object is CanvasTextObject => object.type === 'text',
-      );
-      const slug = (title?.text ?? result?.fileName ?? 'resume')
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '');
+      const fileName = result?.fileName ?? 'edited-resume.pdf';
+      triggerDownload(blob, fileName);
       onResultChange({
-        fileName: result?.fileName ?? `${slug || 'resume'}-ats-resume.pdf`,
+        fileName,
         blob,
         pages,
         generatedAt: new Date().toISOString(),
-        engine: result?.engine ?? 'demo',
-        note: `Edited in the studio — this PDF was rendered from your edited page.${draftNote}`,
-        endpoint: result?.endpoint,
-        jobId: result?.jobId,
-        parseUrl: result?.parseUrl,
-        document: result?.document,
+        engine: 'service',
+        note: 'Edited in the canvas editor and downloaded to your device — this copy is not saved to your profile.',
         canvas,
       });
       setEditing(null);
+      setNeedsDecision(false);
       setTab('preview');
-      onNotify?.('Saved — use Download PDF for the new file.');
-    } catch {
-      setError('Could not render the edited resume. Your changes are still open in the editor.');
+      onNotify?.('Edited resume downloaded to your device.');
+    } catch (problem) {
+      setSaveError(problem instanceof Error ? problem.message : 'Could not render the edited resume. Your changes are still open in the editor.');
+    } finally {
+      saveLock.current = false;
+      setSaving(false);
     }
   }
 
@@ -470,6 +455,7 @@ export function ResumeStudioView({
               disabled={busy}
               className="text-destructive hover:bg-destructive/10"
               onClick={() => {
+                setUsingSaved(false);
                 rawFileRef.current = null;
                 onFileChange(null);
                 onResultChange(null);
@@ -503,6 +489,11 @@ export function ResumeStudioView({
           </div>
         )}
 
+        {file && !result && (
+          <Button size="sm" disabled={busy} onClick={() => void extract(rawFileRef.current)}>
+            {busy ? 'Extracting…' : 'Extract saved resume'}
+          </Button>
+        )}
         {file && (
           <Button
             variant="outline"
@@ -596,24 +587,48 @@ export function ResumeStudioView({
         <div className="animate-fade-in-up min-h-[440px] rounded-2xl border border-border bg-card p-5 shadow-sm">
           {tab === 'preview' && (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">Canvas Preview</h3>
+              <div>
+                <h3 className="text-sm font-semibold">ATS preview</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {result
+                    ? 'Saved to your profile · 1-page ATS resume'
+                    : 'Extract your resume — the ATS version appears here and is saved to your profile.'}
+                </p>
+              </div>
+
+              {/* One column, in order: download the saved copy (once there is
+                  one), edit in the canvas, or skip. The editor is offered from
+                  the start — the preview area itself stays blank until an ATS
+                  resume exists. Editing renders a PDF on your device only. */}
+              <div className="space-y-2 rounded-2xl border border-border bg-muted/30 p-3">
                 {result && (
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={openEditor} disabled={editBusy}>
-                      {editBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
-                      {editBusy ? 'Opening…' : 'Edit'}
-                    </Button>
-                    <Button size="sm" onClick={download}>
-                      <Download className="h-3.5 w-3.5" />
-                      Download PDF
-                    </Button>
-                  </div>
+                  <Button className="w-full" onClick={download}>
+                    <Download className="h-4 w-4" />
+                    Download PDF
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={editBusy}
+                  onClick={openEditor}
+                >
+                  {editBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+                  {editBusy ? 'Opening editor…' : 'Edit in canvas'}
+                </Button>
+                {result && needsDecision && (
+                  <Button
+                    variant="ghost"
+                    className="w-full text-muted-foreground"
+                    onClick={() => setNeedsDecision(false)}
+                  >
+                    Skip — keep the saved ATS resume
+                  </Button>
                 )}
               </div>
 
               {result?.document ? (
-                <div className="max-h-[560px] overflow-y-auto rounded-2xl bg-muted/40 p-4 scrollbar-slim">
+                <div className="rounded-2xl bg-muted/40 p-4">
                   <ResumePreview document={result.document} />
                 </div>
               ) : canEmbedPreview && pdfPreviewSrc ? (
@@ -628,16 +643,7 @@ export function ResumeStudioView({
                 <p className="rounded-xl bg-muted/50 p-3 text-xs text-muted-foreground">
                   This file cannot be previewed in the page — use Download PDF to open it.
                 </p>
-              ) : (
-                <div className="flex min-h-[380px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center">
-                  <Eye className="h-8 w-8 text-muted-foreground/50" />
-                  <h4 className="text-sm font-semibold">Nothing to preview yet</h4>
-                  <p className="max-w-sm text-sm text-muted-foreground">
-                    Upload your resume on the left and generate the ATS-friendly
-                    version — the page will show here exactly as it will print.
-                  </p>
-                </div>
-              )}
+              ) : null}
             </div>
           )}
 
@@ -775,9 +781,9 @@ export function ResumeStudioView({
                 </p>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  {draft.skills.map((skill) => (
+                  {draft.skills.map((skill, index) => (
                     <button
-                      key={skill}
+                      key={`${skill}-${index}`}
                       type="button"
                       title={`Remove ${skill}`}
                       onClick={() =>
@@ -841,22 +847,30 @@ export function ResumeStudioView({
           )}
         </div>
 
-        {/* Save — bottom right, as sketched */}
-        <div className="flex justify-end">
+        {/* Structured profile fields are separate from the canvas PDF layout. */}
+        {tab !== 'preview' && <div className="flex flex-wrap items-center justify-end gap-3">
+          <p className="text-xs text-muted-foreground">These fields update your profile. Use “Edit in canvas” on the ATS preview tab to change the resume PDF.</p>
           <Button
-            onClick={() => {
-              onSave(draft);
-              onNotify?.('Resume saved.');
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              setError(null);
+              try {
+                await onSave(draft);
+                onNotify?.('Profile fields saved. Use Edit to change your resume layout and PDF.');
+              } catch (problem) {
+                setError(problem instanceof Error ? problem.message : 'Could not save your profile fields.');
+              } finally { setSaving(false); }
             }}
           >
             <Save className="h-4 w-4" />
-            Save
+            {saving ? 'Saving…' : 'Save profile fields'}
           </Button>
-        </div>
+        </div>}
       </section>
 
       {editing ? (
-        <ResumeEditor canvas={editing} onSave={saveEdit} onCancel={() => setEditing(null)} />
+        <ResumeEditor canvas={editing} saving={saving} saveError={saveError} onSave={saveEdit} onCancel={() => { if (!saving) setEditing(null); }} />
       ) : null}
     </div>
   );

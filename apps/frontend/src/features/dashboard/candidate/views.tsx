@@ -1,6 +1,6 @@
 'use client';
+import { useMutation } from '@tanstack/react-query';
 
-import { useEffect, useMemo, useState } from 'react';
 import {
   Award,
   BellRing,
@@ -36,20 +36,29 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/use-toast';
-import { changePasswordRequest, readApiError } from '@/features/auth/api';
+import { changePasswordRequest } from '@/features/auth/api';
+import { useSession } from '@/features/auth/queries';
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/store/auth';
 
 import {
-  ACTIVITY_STATUS,
+  ApplicationsTrend,
+  MatchDonut,
+  PipelineFunnel,
+  SkillDemandBars,
+  SourcesDonut,
+  WeeklyBars,
+} from './charts';
+import {
   ACTIVE_STATUSES,
   type Activity,
+  ACTIVITY_STATUS,
   type Application,
   APPLICATION_STATUS_MEANINGS,
   type ApplicationStatus,
@@ -63,14 +72,6 @@ import {
   SOURCES,
   type WorkMode,
 } from './mock-data';
-import {
-  ApplicationsTrend,
-  MatchDonut,
-  PipelineFunnel,
-  SkillDemandBars,
-  SourcesDonut,
-  WeeklyBars,
-} from './charts';
 import { HelpCard } from './sidebar';
 
 /* -------------------------------------------------------------------------- */
@@ -1160,7 +1161,7 @@ export function JobsView({
                     {job.location}
                   </span>
                   <span>{job.type}</span>
-                  <span>posted {job.postedDaysAgo}d ago</span>
+                  <span>posted {job.postedTimeText}</span>
                 </div>
 
                 <p className="mt-2 text-sm font-semibold">
@@ -1447,10 +1448,13 @@ export function JobDrawer({
             <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               About the role
             </p>
-            <p className="text-sm text-muted-foreground">{job.description}</p>
+            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{job.description}</p>
           </section>
 
-          <section>
+          {job.minimumQualifications && <section><h4 className="mb-1.5 font-semibold">Minimum qualifications</h4><p className="whitespace-pre-wrap text-sm text-muted-foreground">{job.minimumQualifications}</p></section>}
+          {job.preferredQualifications && <section><h4 className="mb-1.5 font-semibold">Preferred qualifications</h4><p className="whitespace-pre-wrap text-sm text-muted-foreground">{job.preferredQualifications}</p></section>}
+
+          {job.requirements.length > 0 && <section>
             <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               Requirements
             </p>
@@ -1462,7 +1466,7 @@ export function JobDrawer({
                 </li>
               ))}
             </ul>
-          </section>
+          </section>}
 
           <section>
             <button
@@ -1518,7 +1522,7 @@ export function JobDrawer({
 
           <section className="text-xs text-muted-foreground">
             Posted {job.postedOn} · {job.applicants} applicants so far ·{' '}
-            {job.postedDaysAgo}d ago
+            {job.postedTimeText}
           </section>
         </div>
 
@@ -1550,20 +1554,71 @@ export function JobDrawer({
 export function MessagesView({
   conversations,
   onSend,
+  loading = false,
+  error = null,
+  sending = false,
+  onMarkRead,
 }: {
   conversations: Conversation[];
   onSend: (conversationId: string, text: string) => void;
+  loading?: boolean;
+  error?: string | null;
+  sending?: boolean;
+  onMarkRead?: (conversationId: string) => void;
 }) {
   const [selectedId, setSelectedId] = useState(conversations[0]?.id ?? '');
   const [draft, setDraft] = useState('');
 
-  const selected = conversations.find((conversation) => conversation.id === selectedId);
+  const selected =
+    conversations.find((conversation) => conversation.id === selectedId) ?? conversations[0];
+
+  /* A conversation the candidate cannot start: it exists because a recruiter
+     wrote in. Opening it (or receiving into the open one) clears the badge. */
+  const read = useRef(onMarkRead);
+  read.current = onMarkRead;
+  useEffect(() => {
+    if (selected && selected.unread > 0) read.current?.(selected.id);
+  }, [selected?.id, selected?.unread]);
 
   function send(event: React.FormEvent) {
     event.preventDefault();
-    if (!draft.trim() || !selected) return;
+    if (!draft.trim() || !selected || sending) return;
     onSend(selected.id, draft.trim());
     setDraft('');
+  }
+
+  if (loading && !conversations.length) {
+    return (
+      <p role="status" className="animate-fade-in-up text-sm text-muted-foreground">
+        Loading conversations…
+      </p>
+    );
+  }
+
+  if (!conversations.length) {
+    return (
+      <div className="space-y-5">
+        <div className="animate-fade-in-up">
+          <h2 className="text-xl font-bold">Messages</h2>
+          <p className="text-sm text-muted-foreground">
+            Conversations with recruiters, in one thread per role.
+          </p>
+        </div>
+        <div className="animate-fade-in-up flex min-h-[420px] flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+          <Send className="h-8 w-8 text-muted-foreground/50" />
+          <h3 className="font-semibold">No conversations yet</h3>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            When a recruiter messages you about a role, the conversation appears
+            here. You can always apply to jobs — recruiters reach out after that.
+          </p>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -1606,6 +1661,11 @@ export function MessagesView({
         </div>
 
         <div className="flex min-h-[420px] flex-col rounded-2xl border border-border bg-card shadow-sm">
+          {error && (
+            <p role="alert" className="border-b border-border p-3 text-sm text-destructive">
+              {error}
+            </p>
+          )}
           {selected && (
             <>
               <div className="flex items-center gap-3 border-b border-border p-4">
@@ -1651,7 +1711,7 @@ export function MessagesView({
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                 />
-                <Button type="submit" size="icon" aria-label="Send message">
+                <Button type="submit" size="icon" aria-label="Send message" disabled={sending || !draft.trim()}>
                   <Send className="h-4 w-4" />
                 </Button>
               </form>
@@ -1809,7 +1869,6 @@ export function ProfileView({
   profile,
   checklist,
   percent,
-  onToggleChecklist,
   onOpenSettings,
   atsReady = false,
   atsFileName = null,
@@ -1823,7 +1882,6 @@ export function ProfileView({
   profile: CandidateProfile;
   checklist: ChecklistItem[];
   percent: number;
-  onToggleChecklist: (key: string) => void;
   onOpenSettings: () => void;
   /** True once an ATS-friendly resume has been generated and is downloadable. */
   atsReady?: boolean;
@@ -1837,13 +1895,15 @@ export function ProfileView({
     phone: string;
     expectedSalary: string;
     noticePeriod: string;
-  }) => void;
+  }) => Promise<void>;
   onAddSkill?: (skill: string) => void;
   onRemoveSkill?: (skill: string) => void;
   onAddExperience?: (entry: { role: string; company: string; period: string }) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [skillDraft, setSkillDraft] = useState('');
   const [expDraft, setExpDraft] = useState({ role: '', company: '', period: '' });
   const [form, setForm] = useState({
@@ -1855,17 +1915,23 @@ export function ProfileView({
     noticePeriod: profile.noticePeriod,
   });
 
-  const missing = checklist.filter((item) => !item.done);
   const radius = 30;
   const circumference = 2 * Math.PI * radius;
   const dash = (percent / 100) * circumference;
 
-  function save(event: React.FormEvent) {
+  async function save(event: React.FormEvent) {
     event.preventDefault();
-    setEditing(false);
-    setSaved(true);
-    onSaveProfile?.(form);
-    window.setTimeout(() => setSaved(false), 2600);
+    if (profileSaving) return;
+    setProfileSaving(true);
+    setProfileError(null);
+    try {
+      await onSaveProfile?.(form);
+      setEditing(false);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2600);
+    } catch (problem) {
+      setProfileError(problem instanceof Error ? problem.message : 'Could not save the profile.');
+    } finally { setProfileSaving(false); }
   }
 
   function addSkill() {
@@ -1903,6 +1969,8 @@ export function ProfileView({
         </Button>
       </div>
 
+      {profileError && <p role="alert" className="text-sm text-destructive">{profileError}</p>}
+      {profileSaving && <p role="status" className="text-sm text-muted-foreground">Saving profile…</p>}
       {saved ? (
         <p className="animate-pop-in flex items-center gap-2 rounded-xl bg-success/10 p-3 text-sm font-semibold text-success">
           <Check className="h-4 w-4" />
@@ -2143,8 +2211,8 @@ export function ProfileView({
                   <GraduationCap className="h-3.5 w-3.5 text-primary" />
                   Education
                 </p>
-                {profile.education.map((entry) => (
-                  <div key={entry.degree}>
+                {profile.education.map((entry, index) => (
+                  <div key={`${entry.degree}-${entry.school}-${index}`}>
                     <p className="text-sm font-semibold">{entry.degree}</p>
                     <p className="text-xs text-muted-foreground">
                       {entry.school} · {entry.period}
@@ -2218,7 +2286,7 @@ export function ProfileView({
 
         {/* Side column */}
         <div className="space-y-4">
-          <SectionCard title="Profile strength" delay={100}>
+          <SectionCard title="Profile completeness" delay={100}>
             <div className="flex items-center gap-4">
               <svg viewBox="0 0 72 72" className="h-20 w-20 shrink-0 -rotate-90">
                 <circle
@@ -2287,7 +2355,7 @@ export function ProfileView({
 /* -------------------------------------------------------------------------- */
 
 export function SettingsView({ profile }: { profile?: CandidateProfile }) {
-  const user = useAuthStore((state) => state.user);
+  const { data: user } = useSession();
   const [prefs, setPrefs] = useState({
     alerts: true,
     weekly: true,
@@ -2298,25 +2366,19 @@ export function SettingsView({ profile }: { profile?: CandidateProfile }) {
   const [pwOpen, setPwOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [changingPw, setChangingPw] = useState(false);
+  const changePassword = useMutation({ mutationFn: ({ current, next }: { current: string; next: string }) => changePasswordRequest(current, next) });
+  const changingPw = changePassword.isPending;
 
   async function handleChangePassword(event: React.FormEvent) {
     event.preventDefault();
-    setChangingPw(true);
     try {
-      const res = await changePasswordRequest(currentPassword, newPassword);
-      if (!res.ok) {
-        toast({ title: await readApiError(res), variant: 'destructive' });
-        return;
-      }
+      await changePassword.mutateAsync({ current: currentPassword, next: newPassword });
       toast({ title: 'Password changed', variant: 'success' });
       setCurrentPassword('');
       setNewPassword('');
       setPwOpen(false);
     } catch {
       toast({ title: 'Network error. Please try again.', variant: 'destructive' });
-    } finally {
-      setChangingPw(false);
     }
   }
 
@@ -2515,7 +2577,7 @@ const FAQS = [
   },
   {
     q: 'Why do I get fewer replies than expected?',
-    a: 'In most cases the resume or the headline is the bottleneck, not the volume. Profiles above 90% strength with a tailored resume get roughly 3x more replies - the Insights tab names your biggest gap.',
+    a: 'In most cases the resume or the headline is the bottleneck, not the volume. Review your saved resume and profile for missing details before applying.',
   },
 ];
 
@@ -2620,4 +2682,86 @@ export function StagePills({
   );
 }
 
-export { WORK_MODE_ICON, matchTone, SectionCard, EmptyState, MatchBar };
+export function CandidateProfileViewsView({
+  views = [],
+  totalViews = 0,
+  isLoading = false,
+  error,
+  onRetry,
+}: {
+  views?: Array<{
+    id: string;
+    viewedAt: string;
+    recruiterId: string;
+    recruiterName: string;
+    companyName: string;
+    recruiterEmail: string;
+  }>;
+  totalViews?: number;
+  isLoading?: boolean;
+  error?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="space-y-6 animate-fade-in-up">
+      <div>
+        <h2 className="text-xl font-bold">Profile Views</h2>
+        {!isLoading && !error && <p className="text-sm text-muted-foreground">
+          {totalViews === 1
+            ? '1 recruiter has viewed your profile.'
+            : `${totalViews} recruiters have viewed your profile.`}
+        </p>}
+      </div>
+
+      <div className="space-y-3">
+        {isLoading && (
+          <p role="status" className="text-sm text-muted-foreground">
+            Loading view history…
+          </p>
+        )}
+        {error && <div role="alert" className="text-sm text-destructive">{error} {onRetry && <button type="button" onClick={onRetry} className="font-semibold underline">Retry</button>}</div>}
+        {!isLoading && !error && views.length === 0 && (
+          <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-sm">
+            <Eye className="mx-auto mb-3 h-10 w-10 text-muted-foreground/50" />
+            <h3 className="font-semibold">No profile views yet</h3>
+            <p className="text-sm text-muted-foreground">
+              When recruiters view your profile or resume, they will appear here.
+            </p>
+          </div>
+        )}
+        {views.map((view) => (
+          <div
+            key={view.id}
+            className="flex items-center justify-between rounded-xl border border-border bg-card p-4 shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                {view.companyName?.[0]?.toUpperCase() ||
+                  view.recruiterName?.[0]?.toUpperCase() ||
+                  'R'}
+              </span>
+              <div>
+                <p className="font-semibold">{view.recruiterName}</p>
+                {(view.companyName || view.recruiterEmail) && <p className="text-sm text-muted-foreground">
+                  {[view.companyName, view.recruiterEmail].filter(Boolean).join(' · ')}
+                </p>}
+              </div>
+            </div>
+            <p className="text-xs font-medium text-muted-foreground">
+              Viewed on{' '}
+              {view.viewedAt
+                ? new Date(view.viewedAt).toLocaleDateString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                  })
+                : 'Unknown date'}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export { EmptyState,MatchBar,matchTone,SectionCard,WORK_MODE_ICON };

@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
 import {
   BadgeCheck,
   Briefcase,
@@ -11,9 +10,11 @@ import {
   Clock,
   Eye,
   FileText,
+  Globe,
   GraduationCap,
   Mail,
   MapPin,
+  MessageSquare,
   Pause,
   Phone,
   Play,
@@ -23,18 +24,19 @@ import {
   Send,
   X,
 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { SourcesDonut, WeeklyBars } from './charts';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useSession, useSetSession } from '@/features/auth/queries';
 import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/store/auth';
+import { SourcesDonut, WeeklyBars } from './charts';
+import { ContactRow, ResumePaper } from './resume-paper';
 
 import { RecruiterProfileForm } from '../recruiter-profile-form';
-import { HelpCard } from './sidebar';
 import {
-  INITIAL_CONVERSATIONS,
   SOURCES,
   STATUS_MEANINGS,
   type Applicant,
@@ -43,6 +45,7 @@ import {
   type Job,
   type JobStatus,
 } from './mock-data';
+import { HelpCard } from './sidebar';
 
 /* --- shared bits ------------------------------------------------------- */
 
@@ -116,16 +119,20 @@ function MatchBar({ value }: { value: number }) {
   );
 }
 
-/* --- Applicant detail drawer ---------------------------------------------
- * Right now the details come from mock data. When the candidate module ships,
- * this drawer will hydrate from GET /api/applicants/:id (real resume,
- * profile, uploaded documents). */
+/* Applicant details come from /api/applicants. Contact values arrive as one-way
+ * digests — the real email / phone / LinkedIn never reach the browser — and the
+ * CV renders from the parsed JSON as a paper page (a PDF's text layer cannot be
+ * blurred, so no resume file is served to recruiters here). */
 
 interface DrawerProps {
   applicant: Applicant | null;
   onClose: () => void;
-  onSetStatus: (id: string, status: ApplicantStatus) => void;
-  onScheduleInterview: (id: string, dateLabel: string) => void;
+  onSetStatus?: (id: string, status: ApplicantStatus) => void;
+  onScheduleInterview?: (id: string, dateLabel: string) => void;
+  /** Opens (or re-uses) the chat thread for this applicant and switches tab. */
+  onMessage?: (applicant: Applicant) => void;
+  messageBusy?: boolean;
+  profileOnly?: boolean;
 }
 
 export function ApplicantDrawer({
@@ -133,20 +140,51 @@ export function ApplicantDrawer({
   onClose,
   onSetStatus,
   onScheduleInterview,
+  onMessage,
+  messageBusy = false,
+  profileOnly = false,
 }: DrawerProps) {
   const [scheduling, setScheduling] = useState(false);
+  const [resumeOpen, setResumeOpen] = useState(false);
+  const { data: viewer } = useSession();
+  useEffect(() => { setResumeOpen(false); }, [applicant?.id]);
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') { if (resumeOpen) setResumeOpen(false); else onClose(); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, resumeOpen]);
 
   if (!applicant) return null;
 
   return (
     <div className="fixed inset-0 z-[60]">
+      {resumeOpen && (
+        <div role="dialog" aria-modal="true" aria-label="Candidate resume" className="fixed inset-0 z-[80] flex items-center justify-center bg-foreground/50 p-3 sm:p-6">
+          <section className="flex h-[90vh] w-full max-w-5xl flex-col rounded-xl border border-border bg-card p-4 shadow-xl">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="font-semibold">{applicant.name} — JobDev resume</h3>
+              <div className="flex items-center gap-3">
+                <Button variant="ghost" size="sm" onClick={() => setResumeOpen(false)} aria-label="Close resume"><X className="h-4 w-4" /></Button>
+              </div>
+            </div>
+            {applicant.resume ? (
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-muted/30 p-2 scrollbar-slim">
+                <ResumePaper
+                  resume={applicant.resume}
+                  contact={applicant.contact}
+                  watermarkLabel={viewer?.email ?? viewer?.name ?? 'Recruiter view'}
+                />
+              </div>
+            ) : (
+              <p role="status" className="text-sm text-muted-foreground">
+                No parsed resume on this profile yet — contact details stay hidden either way.
+              </p>
+            )}
+          </section>
+        </div>
+      )}
       <div
         className="animate-fade-in absolute inset-0 bg-foreground/40 backdrop-blur-sm"
         onClick={onClose}
@@ -169,7 +207,7 @@ export function ApplicantDrawer({
               <p className="text-sm text-white/80">{applicant.job}</p>
               <div className="mt-1.5">
                 <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold backdrop-blur">
-                  {applicant.status}
+                  {profileOnly ? 'Viewed profile' : applicant.status}
                 </span>
               </div>
             </div>
@@ -177,18 +215,30 @@ export function ApplicantDrawer({
         </div>
 
         <div className="flex-1 space-y-5 p-6">
-          {/* Contact */}
+          {/* Contact — the API replaces email / phone / links with a one-way
+              digest before they are sent; location stays readable on purpose
+              (screening data, not contact data). */}
           <section className="space-y-2 text-sm">
-            <p className="flex items-center gap-2 text-muted-foreground">
-              <Mail className="h-4 w-4 text-primary" /> {applicant.email}
+            <p>
+              <ContactRow icon={Mail} value={applicant.email} label="Email" masked={applicant.contactMasked} />
             </p>
-            <p className="flex items-center gap-2 text-muted-foreground">
-              <Phone className="h-4 w-4 text-primary" /> {applicant.phone}
+            <p>
+              <ContactRow icon={Phone} value={applicant.phone} label="Phone" masked={applicant.contactMasked} />
             </p>
-            <p className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="h-4 w-4 text-primary" /> {applicant.location} ·
-              applied {applicant.appliedDaysAgo}d ago
-            </p>
+            {applicant.linkedin ? (
+              <p>
+                <ContactRow icon={Globe} value={applicant.linkedin} label="LinkedIn" masked={applicant.contactMasked} />
+              </p>
+            ) : null}
+            {(applicant.contact?.other ?? []).map((link) => (
+              <p key={link.label}>
+                <ContactRow icon={Globe} value={link.token ?? ''} label={link.label} masked={applicant.contactMasked} />
+              </p>
+            ))}
+            {(applicant.location || !profileOnly) && <p className="flex items-center gap-2 text-muted-foreground">
+              <MapPin className="h-4 w-4 text-primary" /> {applicant.location}{!profileOnly && ' · '}
+              {!profileOnly && <>applied {applicant.appliedDaysAgo}d ago</>}
+            </p>}
           </section>
 
           {applicant.scheduledDate && (
@@ -198,40 +248,40 @@ export function ApplicantDrawer({
             </p>
           )}
 
-          <section>
+          {!profileOnly && <section>
             <div className="mb-1 flex items-center justify-between text-sm">
               <span className="font-semibold">ATS match score</span>
               <MatchBar value={applicant.match} />
             </div>
-          </section>
+          </section>}
 
-          <section>
+          {applicant.summary && <section>
             <h4 className="mb-1.5 text-sm font-bold">Summary</h4>
             <p className="text-sm leading-relaxed text-muted-foreground">
               {applicant.summary}
             </p>
-          </section>
+          </section>}
 
-          <section>
+          {applicant.skills.length > 0 && <section>
             <h4 className="mb-2 text-sm font-bold">Skills</h4>
             <div className="flex flex-wrap gap-1.5">
-              {applicant.skills.map((skill) => (
+              {applicant.skills.map((skill, index) => (
                 <span
-                  key={skill}
+                  key={`${skill}-${index}`}
                   className="animate-pop-in rounded-full bg-primary-light px-2.5 py-1 text-xs font-semibold text-primary-dark"
                 >
                   {skill}
                 </span>
               ))}
             </div>
-          </section>
+          </section>}
 
-          <section>
+          {applicant.experience.length > 0 && <section>
             <h4 className="mb-2 text-sm font-bold">Experience</h4>
             <ul className="space-y-2.5">
-              {applicant.experience.map((entry) => (
+              {applicant.experience.map((entry, index) => (
                 <li
-                  key={entry.company}
+                  key={`${entry.company}-${entry.period}-${index}`}
                   className="rounded-xl border border-border p-3"
                 >
                   <p className="text-sm font-semibold">{entry.role}</p>
@@ -241,47 +291,53 @@ export function ApplicantDrawer({
                 </li>
               ))}
             </ul>
-          </section>
+          </section>}
 
-          <section>
+          {applicant.education && <section>
             <h4 className="mb-1.5 flex items-center gap-2 text-sm font-bold">
               <GraduationCap className="h-4 w-4 text-primary" /> Education
             </h4>
             <p className="text-sm text-muted-foreground">{applicant.education}</p>
-          </section>
+          </section>}
 
-          {/* Resume / CV placeholder - real files arrive with the candidate module. */}
           <section>
             <h4 className="mb-1.5 font-semibold">Resume / CV</h4>
-            <button
-              type="button"
-              title="Resume viewer lands with the candidate module"
-              className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border bg-muted/50 p-3 text-left transition-colors hover:border-primary/40"
+            <Button variant="outline" className="w-full" disabled={!applicant.resume} onClick={() => setResumeOpen(true)}>
+              <FileText className="h-4 w-4" />
+              {applicant.resume ? 'View resume' : 'No resume uploaded'}
+            </Button>
+            {applicant.resume && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Parsed from {applicant.resumeFileName ?? 'the uploaded file'} · contact details hidden
+              </p>
+            )}
+          </section>
+
+          <section>
+            <h4 className="mb-1.5 font-semibold">Messages</h4>
+            <Button
+              className="w-full"
+              disabled={!onMessage || messageBusy}
+              onClick={() => onMessage?.(applicant)}
             >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-light text-primary-dark">
-                <FileText className="h-5 w-5" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold">
-                  View resume (PDF)
-                </span>
-                <span className="block text-xs text-muted-foreground">
-                  Placeholder - real resumes arrive with the candidate module.
-                </span>
-              </span>
-            </button>
+              <MessageSquare className="h-4 w-4" />
+              {messageBusy ? 'Opening…' : 'Message candidate'}
+            </Button>
+            <p className="mt-2 text-xs text-muted-foreground">
+              The candidate can reply once you send the first message.
+            </p>
           </section>
         </div>
 
         {/* Workflow actions per stage:
             New = Shortlist/Reject, Shortlisted = Interview/Reject,
             Interview = Hire/Reschedule/Reject, Hired/Rejected = terminal. */}
-        <div className="sticky bottom-0 flex gap-2 border-t border-border bg-card p-4">
+        {!profileOnly && <div className="sticky bottom-0 flex gap-2 border-t border-border bg-card p-4">
           {applicant.status === 'New' && (
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => onSetStatus(applicant.id, 'Shortlisted')}
+              onClick={() => onSetStatus?.(applicant.id, 'Shortlisted')}
             >
               <Check className="h-4 w-4" />
               Shortlist
@@ -297,7 +353,7 @@ export function ApplicantDrawer({
             <>
               <Button
                 className="flex-1"
-                onClick={() => onSetStatus(applicant.id, 'Hired')}
+                onClick={() => onSetStatus?.(applicant.id, 'Hired')}
               >
                 <BadgeCheck className="h-4 w-4" />
                 Hire
@@ -318,7 +374,7 @@ export function ApplicantDrawer({
             <Button
               variant="ghost"
               className="flex-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => onSetStatus(applicant.id, 'Rejected')}
+              onClick={() => onSetStatus?.(applicant.id, 'Rejected')}
             >
               <X className="h-4 w-4" />
               Reject
@@ -332,7 +388,7 @@ export function ApplicantDrawer({
                 : 'Rejected. Use the reopen action on the list to reconsider.'}
             </p>
           )}
-        </div>
+        </div>}
       </aside>
 
       {scheduling && (
@@ -340,7 +396,7 @@ export function ApplicantDrawer({
           name={applicant.name}
           onClose={() => setScheduling(false)}
           onPick={(label) => {
-            onScheduleInterview(applicant.id, label);
+            onScheduleInterview?.(applicant.id, label);
             setScheduling(false);
           }}
         />
@@ -357,11 +413,15 @@ const EMPTY_FORM = {
   location: '',
   type: 'Full-time',
   salary: '',
+  description: '',
+  minimumQualifications: '',
+  preferredQualifications: '',
 };
 
 interface JobsViewProps {
   jobs: Job[];
-  onAdd: (job: Job) => void;
+  onAdd: (job: Job) => Promise<void>;
+  posting: boolean;
   onSetStatus: (id: string, status: JobStatus) => void;
   onViewApplicants: (jobTitle: string) => void;
   onOpenJob: (job: Job) => void;
@@ -371,6 +431,7 @@ interface JobsViewProps {
 export function JobsView({
   jobs,
   onAdd,
+  posting,
   onSetStatus,
   onViewApplicants,
   onOpenJob,
@@ -383,26 +444,31 @@ export function JobsView({
     if (openSignal > 0) setOpen(true);
   }, [openSignal]);
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!form.title.trim()) return;
-    onAdd({
+    if (posting || !form.title.trim() || !form.description.trim() || !form.minimumQualifications.trim()) return;
+    try { await onAdd({
       id: `job-${Date.now()}`,
       title: form.title.trim(),
       department: form.department,
       location: form.location.trim() || 'Remote',
       type: form.type as Job['type'],
       salary: form.salary.trim() || 'Negotiable',
+      description: form.description.trim(),
+      minimumQualifications: form.minimumQualifications.trim(),
+      preferredQualifications: form.preferredQualifications.trim(),
       status: 'Active',
       applicants: 0,
       views: 0,
       postedDaysAgo: 0,
+      postedHoursAgo: 0,
+      postedTimeText: '0 hours ago',
       postedOn: new Date().toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
       }),
-    });
+    }); } catch { return; } // Keep the full draft open after a failed mutation.
     setForm(EMPTY_FORM);
     setOpen(false);
   }
@@ -476,7 +542,7 @@ export function JobsView({
             />
           </div>
           <div>
-            <Label htmlFor="job-salary">Salary range</Label>
+            <Label htmlFor="job-salary">Minimum salary or range (Optional)</Label>
             <Input
               id="job-salary"
               placeholder="Rs 80k–120k"
@@ -485,9 +551,21 @@ export function JobsView({
             />
           </div>
           <div className="sm:col-span-2">
-            <Button type="submit" className="w-full">
+            <Label htmlFor="job-desc">Job description</Label>
+            <Textarea id="job-desc" placeholder="What will this person do on a day-to-day basis?" value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} className="min-h-[80px]" required maxLength={20000} />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="job-min-qual">Minimum qualifications</Label>
+            <Textarea id="job-min-qual" placeholder="e.g. Bachelors degree, 3+ years experience" value={form.minimumQualifications} onChange={event => setForm({ ...form, minimumQualifications: event.target.value })} className="min-h-[80px]" required maxLength={12000} />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="job-pref-qual">Preferred qualifications (Optional)</Label>
+            <Textarea id="job-pref-qual" placeholder="e.g. React Query experience is a plus" value={form.preferredQualifications} onChange={event => setForm({ ...form, preferredQualifications: event.target.value })} className="min-h-[80px]"  maxLength={12000} />
+          </div>
+          <div className="sm:col-span-2">
+            <Button type="submit" className="w-full" disabled={posting}>
               <Briefcase className="h-4 w-4" />
-              Publish job post
+              {posting ? 'Publishing…' : 'Publish job post'}
             </Button>
           </div>
         </form>
@@ -651,51 +729,97 @@ export function ApplicantsView({
   const [query, setQuery] = useState('');
   const [scheduling, setScheduling] = useState<Applicant | null>(null);
 
+  const keywordOptions = useMemo(() => {
+    const DEFAULT_KEYWORDS = ['Frontend', 'Backend', 'Full-stack', 'React', 'Node.js', 'Java', 'Python', 'Designer'];
+    const derived = new Map<string, number>();
+    for (const app of applicants) {
+      const candidates = [app.job, ...(app.skills || [])];
+      for (const raw of candidates) {
+        if (!raw || typeof raw !== 'string') continue;
+        const kw = raw.trim();
+        if (kw.length < 2 || kw.length > 20) continue;
+        derived.set(kw, (derived.get(kw) ?? 0) + 1);
+      }
+    }
+    DEFAULT_KEYWORDS.forEach((kw) => derived.set(kw, (derived.get(kw) ?? 0) + 1));
+    return Array.from(derived.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map((entry) => entry[0])
+      .slice(0, 15);
+  }, [applicants]);
+
   const visible = useMemo(
-    () =>
-      applicants.filter(
+    () => {
+      const q = query.trim().toLowerCase();
+      return applicants.filter(
         (applicant) =>
           (statusFilter === 'All' || applicant.status === statusFilter) &&
           (!filterJob || applicant.job === filterJob) &&
-          applicant.name.toLowerCase().includes(query.toLowerCase()),
-      ),
+          (applicant.name.toLowerCase().includes(q) || 
+           (applicant.skills || []).some(s => s.toLowerCase().includes(q)) || 
+           (applicant.job || '').toLowerCase().includes(q))
+      );
+    },
     [applicants, statusFilter, filterJob, query],
   );
 
   return (
     <>
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="animate-fade-in-up text-xl font-bold">Applicants</h2>
-          <p className="text-sm text-muted-foreground">
-            {filterJob ? (
-              <>
-                Filtered to{' '}
-                <span className="font-semibold text-primary-dark">
-                  {filterJob}
-                </span>{' '}
-                <button
-                  type="button"
-                  onClick={onClearJobFilter}
-                  className="ml-1 underline underline-offset-2 hover:text-destructive"
-                >
-                  clear
-                </button>
-              </>
-            ) : (
-              `${applicants.length} people in your pipeline - click a name for details`
-            )}
-          </p>
+      <div className="animate-fade-in-up">
+        <h2 className="text-xl font-bold">Applicants</h2>
+        <p className="text-sm text-muted-foreground">
+          {filterJob ? (
+            <>
+              Filtered to <span className="font-semibold text-primary-dark">{filterJob}</span>{' '}
+              <button type="button" onClick={onClearJobFilter} className="ml-1 underline underline-offset-2 hover:text-destructive">
+                clear
+              </button>
+            </>
+          ) : (
+            `${applicants.length} people in your pipeline - click a name for details`
+          )}
+        </p>
+      </div>
+
+      <div className="animate-fade-in-up space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, role, or skill…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="w-full pl-9"
+            />
+          </div>
+          <Button 
+            type="button" 
+            variant="default" 
+            onClick={() => {
+              // search hit
+            }}
+          >
+            <Search className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Search</span>
+          </Button>
         </div>
-        <div className="relative w-full sm:w-56">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search applicants…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="pl-9"
-          />
+
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border w-full">
+          {keywordOptions
+            .map((keyword) => (
+              <button
+                key={keyword}
+                type="button"
+                onClick={() => {
+                  const newQuery = query ? `${query} ${keyword}` : keyword;
+                  setQuery(newQuery);
+                }}
+                className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary-dark"
+              >
+                + {keyword}
+              </button>
+            ))}
         </div>
       </div>
 
@@ -870,38 +994,62 @@ export function ApplicantsView({
 }
 
 /* --- Messages -------------------------------------------------------------
- * NOTE: conversations are demo data for now. Real cross-role messaging lands
- * with the backend messages module (a candidate's question will then appear
- * here automatically). */
+ * Live conversations from `/api/messages/threads`. A thread is opened from the
+ * applicant drawer and is invisible to the candidate until the recruiter sends
+ * the first message; updates arrive over the chat socket. */
 
-export function MessagesView() {
-  const [conversations, setConversations] = useState<Conversation[]>(
-    INITIAL_CONVERSATIONS,
-  );
-  const [selectedId, setSelectedId] = useState<string | null>(
-    INITIAL_CONVERSATIONS[0]?.id ?? null,
-  );
+export function MessagesView({
+  conversations,
+  onSend,
+  loading = false,
+  error = null,
+  sending = false,
+  selectedId,
+  onSelect,
+  onMarkRead,
+}: {
+  conversations: Conversation[];
+  onSend: (conversationId: string, text: string) => void;
+  loading?: boolean;
+  error?: string | null;
+  sending?: boolean;
+  selectedId?: string | null;
+  onSelect?: (conversationId: string) => void;
+  onMarkRead?: (conversationId: string) => void;
+}) {
+  const [ownId, setOwnId] = useState('');
   const [draft, setDraft] = useState('');
+  const activeId = selectedId ?? ownId;
+  const selected =
+    conversations.find((conversation) => conversation.id === activeId) ?? conversations[0];
 
-  const selected = conversations.find((c) => c.id === selectedId);
+  /* Reading a thread — by choosing it or by receiving into the open one —
+     clears its badge exactly once. */
+  const read = useRef(onMarkRead);
+  read.current = onMarkRead;
+  useEffect(() => {
+    if (selected && selected.unread > 0) read.current?.(selected.id);
+  }, [selected?.id, selected?.unread]);
+
+  function choose(conversationId: string) {
+    setOwnId(conversationId);
+    onSelect?.(conversationId);
+    onMarkRead?.(conversationId);
+  }
 
   function send(event: React.FormEvent) {
     event.preventDefault();
-    if (!draft.trim() || !selected) return;
-    setConversations((current) =>
-      current.map((conversation) =>
-        conversation.id === selected.id
-          ? {
-              ...conversation,
-              messages: [
-                ...conversation.messages,
-                { from: 'me', text: draft.trim(), time: 'now' },
-              ],
-            }
-          : conversation,
-      ),
-    );
+    if (!draft.trim() || !selected || sending) return;
+    onSend(selected.id, draft.trim());
     setDraft('');
+  }
+
+  if (loading && !conversations.length) {
+    return (
+      <p role="status" className="animate-fade-in-up text-sm text-muted-foreground">
+        Loading conversations…
+      </p>
+    );
   }
 
   if (conversations.length === 0) {
@@ -910,9 +1058,14 @@ export function MessagesView() {
         <Send className="h-8 w-8 text-muted-foreground/50" />
         <h3 className="font-semibold">No conversations yet</h3>
         <p className="max-w-sm text-sm text-muted-foreground">
-          When applicants message you about a role, the conversation appears
-          here.
+          Open an applicant and choose “Message candidate” to start one — it
+          appears here, and again whenever they reply.
         </p>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
       </div>
     );
   }
@@ -924,10 +1077,10 @@ export function MessagesView() {
           <button
             key={conversation.id}
             type="button"
-            onClick={() => setSelectedId(conversation.id)}
+            onClick={() => choose(conversation.id)}
             className={cn(
               'flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all',
-              conversation.id === selectedId
+              conversation.id === selected?.id
                 ? 'bg-primary-light shadow-inner'
                 : 'hover:bg-muted',
             )}
@@ -951,6 +1104,11 @@ export function MessagesView() {
       </div>
 
       <div className="flex min-h-[420px] flex-col rounded-2xl border border-border bg-card shadow-sm">
+        {error && (
+          <p role="alert" className="border-b border-border p-3 text-sm text-destructive">
+            {error}
+          </p>
+        )}
         {selected && (
           <>
             <div className="flex items-center gap-3 border-b border-border p-4">
@@ -961,6 +1119,11 @@ export function MessagesView() {
               </div>
             </div>
             <div className="flex-1 space-y-3 overflow-y-auto p-4 scrollbar-slim">
+              {selected.messages.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Write the first message — the candidate can answer it.
+                </p>
+              )}
               {selected.messages.map((message, index) => (
                 <div
                   key={index}
@@ -995,7 +1158,7 @@ export function MessagesView() {
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
               />
-              <Button type="submit" size="icon" aria-label="Send message">
+              <Button type="submit" size="icon" aria-label="Send message" disabled={sending || !draft.trim()}>
                 <Send className="h-4 w-4" />
               </Button>
             </form>
@@ -1011,8 +1174,8 @@ export function MessagesView() {
 /* --- Company profile / Settings / Help ------------------------------------- */
 
 export function CompanyView() {
-  const user = useAuthStore((state) => state.user);
-  const setUser = useAuthStore((state) => state.setUser);
+  const { data: user } = useSession();
+  const setUser = useSetSession();
   const [saved, setSaved] = useState(false);
 
   if (!user) return null;
@@ -1053,7 +1216,8 @@ export function SettingsView() {
   const [prefs, setPrefs] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_PREFS;
     try {
-      const raw = window.localStorage.getItem(PREFS_KEY);
+      const encoded = document.cookie.split('; ').find(part => part.startsWith(`${PREFS_KEY}=`))?.slice(PREFS_KEY.length + 1);
+      const raw = encoded ? decodeURIComponent(encoded) : null;
       if (raw) return { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<typeof DEFAULT_PREFS>) };
     } catch {
       /* fall back to defaults */
@@ -1067,7 +1231,7 @@ export function SettingsView() {
 
   function save() {
     try {
-      window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+      document.cookie = `${PREFS_KEY}=${encodeURIComponent(JSON.stringify(prefs))}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
     } catch {
       /* storage may be unavailable; the in-memory values still apply */
     }
@@ -1410,6 +1574,9 @@ export function JobDrawer({
             </p>
           </section>
 
+          {job.minimumQualifications && <section><h4 className="mb-1.5 font-semibold">Minimum qualifications</h4><p className="whitespace-pre-wrap text-sm text-muted-foreground">{job.minimumQualifications}</p></section>}
+          {job.preferredQualifications && <section><h4 className="mb-1.5 font-semibold">Preferred qualifications</h4><p className="whitespace-pre-wrap text-sm text-muted-foreground">{job.preferredQualifications}</p></section>}
+
           {job.requirements && job.requirements.length > 0 && (
             <section>
               <h4 className="mb-1.5 font-semibold">What we look for</h4>
@@ -1485,4 +1652,70 @@ export function AnalyticsView() {
       </div>
     </div>
   );
+}
+
+
+/* --- /api/applicants row → Applicant ----------------------------------- */
+
+/** One row of `GET /api/applicants` (masked contact + parsed CV). */
+export interface ApplicantApiRow {
+  id: string;
+  status: string;
+  appliedAt: string;
+  job: { id: string; title: string; company: string; location: string | null } | null;
+  candidate: {
+    id: string;
+    name: string;
+    location: string | null;
+    contactMode: 'blurred';
+    contact: {
+      email: { token: string | null };
+      phone: { token: string | null };
+      linkedin: { token: string | null };
+      other: Array<{ label: string; token: string | null }>;
+    };
+    resumeFileName: string | null;
+    hasResume: boolean;
+    resume: NonNullable<Applicant['resume']>;
+  };
+}
+
+const APPLICANT_STATUS_MAP: Record<string, ApplicantStatus> = {
+  NEW: 'New',
+  SHORTLISTED: 'Shortlisted',
+  INTERVIEW: 'Interview',
+  HIRED: 'Hired',
+  REJECTED: 'Rejected',
+};
+
+export function mapApplicantRow(row: ApplicantApiRow): Applicant {
+  const applied = row.appliedAt ? new Date(row.appliedAt) : null;
+  const days = applied ? Math.max(0, Math.round((Date.now() - applied.getTime()) / 86_400_000)) : 0;
+  const resume = row.candidate.resume;
+  return {
+    id: row.id,
+    candidateId: row.candidate.id,
+    name: row.candidate.name,
+    job: row.job?.title ?? '',
+    match: 0,
+    status: APPLICANT_STATUS_MAP[row.status.toUpperCase()] ?? 'New',
+    appliedDaysAgo: days,
+    email: row.candidate.contact.email.token ?? '',
+    phone: row.candidate.contact.phone.token ?? '',
+    linkedin: row.candidate.contact.linkedin.token ?? '',
+    contactMasked: row.candidate.contactMode === 'blurred',
+    contact: row.candidate.contact as Applicant['contact'],
+    location: row.candidate.location ?? '',
+    summary: resume.summary,
+    skills: resume.skills,
+    experience: resume.experience.map((entry) => ({
+      role: entry.role,
+      company: entry.company,
+      period: entry.period,
+    })),
+    education: resume.education.join(' · '),
+    resume,
+    resumeFileName: row.candidate.resumeFileName,
+    hasResume: row.candidate.hasResume,
+  };
 }

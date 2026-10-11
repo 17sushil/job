@@ -25,6 +25,9 @@ export class User {
   })
   role!: UserRole;
 
+  @Column({ type: 'int', default: 1 })
+  sessionVersion!: number;
+
   @Column({ type: 'varchar', unique: true, nullable: true })
   email!: string | null;
 
@@ -63,6 +66,12 @@ export class User {
 
   @Column({ type: 'timestamp with time zone', nullable: true })
   resumeUploadedAt!: Date | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  resumeCanvas!: Record<string, any> | null;
+
+  @Column({ type: 'bytea', nullable: true })
+  resumePdf!: Buffer | null;
 
   @Column({ type: 'jsonb', nullable: true })
   parsedProfile!: Record<string, unknown> | null;

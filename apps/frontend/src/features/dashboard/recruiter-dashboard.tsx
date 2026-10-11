@@ -1,28 +1,24 @@
 'use client';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Bell,
-  Briefcase,
-  CalendarCheck,
-  CheckCheck,
-  Eye,
-  Plus,
-  Search,
-  Users,
-} from 'lucide-react';
+import { Briefcase, CheckCheck, Eye, Plus, Users } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/use-toast';
-import { apiGet, apiPatch, apiPost, type JobRow } from '@/features/dashboard/shared';
+import { useSession } from '@/features/auth/queries';
+import {
+  apiGet,
+  apiPatch,
+  apiPost,
+  type JobRow,
+} from '@/features/dashboard/shared';
 import { useCountUp } from '@/lib/use-count-up';
 import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/store/auth';
 
+import { ViewedCandidatesView, ViewedCandidateDrawer, useRecordProfileView } from './recruiter/viewed-candidates';
 import { ApplicationsChart } from './recruiter/charts';
 import {
-  INITIAL_APPLICANTS,
   INITIAL_JOBS,
   INITIAL_NOTIFICATIONS,
   type Applicant,
@@ -41,12 +37,20 @@ import {
   HelpView,
   JobDrawer,
   JobsView,
+  mapApplicantRow,
+  MessagesView,
   SettingsView,
   StatusChip,
+  type ApplicantApiRow,
 } from './recruiter/views';
+import { useChat } from './chat/use-chat';
 
-const daysSince = (iso: string) =>
-  Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+const daysSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+const hoursSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000));
+const formatPostedTime = (hours: number, days: number) => {
+  if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+  return days === 1 ? '1 day ago' : `${days} days ago`;
+};
 
 /* Map an API job row into the recruiter workspace Job shape. */
 function mapApiJob(row: JobRow): Job {
@@ -59,11 +63,16 @@ function mapApiJob(row: JobRow): Job {
     department: str(metadata.department) ?? '',
     location: row.location ?? 'Remote',
     type,
+    description: row.description ?? '',
+    minimumQualifications: str(metadata.minimumQualifications) ?? '',
+    preferredQualifications: str(metadata.preferredQualifications) ?? '',
     salary: str(metadata.salary) ?? 'Negotiable',
     status: row.status === 'paused' ? 'Paused' : row.status === 'closed' ? 'Closed' : 'Active',
     applicants: 0,
     views: 0,
     postedDaysAgo: daysSince(row.createdAt),
+    postedHoursAgo: hoursSince(row.createdAt),
+    postedTimeText: formatPostedTime(hoursSince(row.createdAt), daysSince(row.createdAt)),
     postedOn: new Date(row.createdAt).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -134,44 +143,33 @@ function StatCard({
 }
 
 export function RecruiterDashboard() {
-  const user = useAuthStore((state) => state.user);
-  const logout = useAuthStore((state) => state.logout);
+  const { data: user } = useSession();
+  const chat = useChat(!!user);
+  /** The thread the Messages tab opens on (set when the drawer starts one). */
+  const [chatThreadId, setChatThreadId] = useState<string | null>(null);
 
   const [view, setView] = useState<RecruiterView>('overview');
-  const [jobs, setJobs] = useState<Job[]>(INITIAL_JOBS);
-  const [applicants, setApplicants] =
-    useState<Applicant[]>(INITIAL_APPLICANTS);
+  const client = useQueryClient();
+  const jobsKey = ['account', user?.id, 'recruiter-jobs'];
+  const applicantsKey = ['account', user?.id, 'applicants'];
+  const jobsQuery = useQuery({ queryKey: jobsKey, enabled: !!user,
+    queryFn: async ({ signal }) => (await apiGet<{ jobs: JobRow[] }>('/api/jobs/mine', signal)).jobs.map(mapApiJob) });
+  const applicantsQuery = useQuery({ queryKey: applicantsKey, enabled: !!user,
+    /* Always re-read: a candidate can replace their resume after applying, and
+       the app default (30 s stale + no refetch on focus) kept showing the old
+       one in an open tab. */
+    staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: true,
+    /* Masked at the source: contact values are one-way tokens already. */
+    queryFn: async ({ signal }) => (await apiGet<{ applicants: ApplicantApiRow[] }>('/api/applicants', signal)).applicants.map(mapApplicantRow) });
+  const jobs = jobsQuery.data ?? INITIAL_JOBS;
+  const applicants = applicantsQuery.data ?? [];
+  const setJobs = (update: (current: Job[]) => Job[]) => client.setQueryData(jobsKey, update(jobs));
+  const setApplicants = (update: (current: Applicant[]) => Applicant[]) => client.setQueryData(applicantsKey, update(applicants));
+  const createJob = useMutation({ mutationFn: (data: Record<string, unknown>) => apiPost<{ job: JobRow }>('/api/jobs', data) });
+  const updateJob = useMutation({ mutationFn: ({ id, status }: { id: string; status: string }) => apiPatch(`/api/jobs/${id}/status`, { status }) });
+  // Notification view state is memory-only, never persisted alongside identity data.
+  const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
 
-  /* Jobs are real rows: load what this recruiter has posted. */
-  useEffect(() => {
-    apiGet<{ jobs: JobRow[] }>('/api/jobs/mine')
-      .then((data) => setJobs(data.jobs.map(mapApiJob)))
-      .catch((error: Error) =>
-        toast({ title: error.message, variant: 'destructive' }),
-      );
-  }, []);
-  /* Notifications persist in localStorage so read state survives reloads. */
-  const [notifications, setNotifications] = useState<Notification[]>(() => {
-    if (typeof window === 'undefined') return INITIAL_NOTIFICATIONS;
-    try {
-      const raw = window.localStorage.getItem('jobdev-recruiter-notifications');
-      if (raw) return JSON.parse(raw) as Notification[];
-    } catch {
-      /* fall back to the demo set */
-    }
-    return INITIAL_NOTIFICATIONS;
-  });
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        'jobdev-recruiter-notifications',
-        JSON.stringify(notifications),
-      );
-    } catch {
-      /* storage may be unavailable; ignore */
-    }
-  }, [notifications]);
   const [notifOpen, setNotifOpen] = useState(false);
 
   /* The navbar bell + gear live in the shared layout; they drive this
@@ -196,31 +194,17 @@ export function RecruiterDashboard() {
   const [postJobSignal, setPostJobSignal] = useState(0);
   const [selectedApplicant, setSelectedApplicant] =
     useState<Applicant | null>(null);
+  const recordView = useRecordProfileView();
+  const [viewedCandidateId, setViewedCandidateId] = useState<string | null>(null);
+  const openApplicant = (applicant: Applicant) => {
+    setSelectedApplicant(applicant);
+    if (applicant.candidateId) recordView.mutate(applicant.candidateId);
+  };
+  const openViewedCandidate = (candidateId: string) => {
+    setViewedCandidateId(candidateId);
+    recordView.mutate(candidateId);
+  };
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [query, setQuery] = useState('');
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  /* Close the search dropdown on outside click / Escape so an open result
-     list never blocks the Post-a-job form or anything else. */
-  useEffect(() => {
-    function onPointerDown(event: MouseEvent) {
-      if (
-        searchRef.current &&
-        !searchRef.current.contains(event.target as Node)
-      ) {
-        setQuery('');
-      }
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') setQuery('');
-    }
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, []);
 
   const firstName =
     (user?.name || user?.identifier || 'there').split(/[@\s]/)[0] || 'there';
@@ -258,22 +242,7 @@ export function RecruiterDashboard() {
           setView('applicants');
         },
       },
-      {
-        label: 'Interviews scheduled',
-        value: applicants.filter((a) => a.status === 'Interview').length,
-        delta: (() => {
-          const next = applicants.find(
-            (a) => a.status === 'Interview' && a.scheduledDate,
-          );
-          return next ? `Next: ${next.scheduledDate}` : 'None scheduled yet';
-        })(),
-        icon: CalendarCheck,
-        hint: 'View applicants in interview',
-        go: () => {
-          setStatusFilter('Interview');
-          setView('applicants');
-        },
-      },
+      /* { label: 'Interviews scheduled' ... omitted for now } */
       {
         label: 'Job views',
         value: jobs.reduce((sum, job) => sum + job.views, 0),
@@ -287,28 +256,19 @@ export function RecruiterDashboard() {
   );
 
   /* Working global search: matches jobs + applicants, click to jump in. */
-  const searchResults = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return null;
-    return {
-      jobs: jobs.filter((job) => job.title.toLowerCase().includes(q)).slice(0, 4),
-      applicants: applicants
-        .filter((applicant) => applicant.name.toLowerCase().includes(q))
-        .slice(0, 4),
-    };
-  }, [query, jobs, applicants]);
 
-  const unread = notifications.filter((n) => !n.read).length;
 
   async function addJob(job: Job) {
     try {
-      const data = await apiPost<{ job: JobRow }>('/api/jobs', {
+      const data = await createJob.mutateAsync({
         title: job.title,
         location: job.location,
         description: job.description ?? null,
         department: job.department || null,
         employmentType: job.type,
         salary: job.salary || null,
+        minimumQualifications: job.minimumQualifications || null,
+        preferredQualifications: job.preferredQualifications || null,
       });
       /* Saved job rows power the candidate side too - their keyword chips
          derive from these posts automatically. */
@@ -318,6 +278,7 @@ export function RecruiterDashboard() {
         title: error instanceof Error ? error.message : 'Could not post the job',
         variant: 'destructive',
       });
+      throw error;
     }
   }
 
@@ -325,7 +286,7 @@ export function RecruiterDashboard() {
     const apiStatus =
       status === 'Active' ? 'open' : status === 'Paused' ? 'paused' : 'closed';
     try {
-      await apiPatch(`/api/jobs/${id}/status`, { status: apiStatus });
+      await updateJob.mutateAsync({ id, status: apiStatus });
     } catch (error) {
       toast({
         title: error instanceof Error ? error.message : 'Could not update the job',
@@ -337,10 +298,10 @@ export function RecruiterDashboard() {
       status === 'Active'
         ? undefined
         : new Date().toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          });
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
     setJobs((current) =>
       current.map((job) =>
         job.id === id ? { ...job, status, statusChangedOn: changedOn } : job,
@@ -388,7 +349,30 @@ export function RecruiterDashboard() {
 
   const badges: Partial<Record<RecruiterView, number>> = {
     applicants: applicants.filter((a) => a.status === 'New').length,
+    messages: chat.unread,
   };
+
+  /** Opens (or re-uses) the conversation for one applicant and jumps to it. */
+  async function openChat(applicant: Applicant) {
+    try {
+      const thread = await chat.openThread.mutateAsync(applicant.id);
+      setChatThreadId(thread.id);
+      setSelectedApplicant(null);
+      setView('messages');
+    } catch (error) {
+      toast({
+        title: error instanceof Error ? error.message : 'Could not open the conversation',
+        variant: 'destructive',
+      });
+    }
+  }
+
+  const chatError =
+    chat.threads.error instanceof Error
+      ? chat.threads.error.message
+      : chat.send.error instanceof Error
+        ? chat.send.error.message
+        : null;
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
@@ -396,17 +380,19 @@ export function RecruiterDashboard() {
         active={view}
         onSelect={setView}
         badges={badges}
-        onLogout={logout}
+        onLogout={() => window.dispatchEvent(new CustomEvent('jobdev:logout'))}
       />
 
       <main className="min-w-0 flex-1 space-y-4">
+        {(jobsQuery.isPending || applicantsQuery.isPending) && <p role="status" className="text-sm text-muted-foreground">Loading recruiter data…</p>}
+        {(jobsQuery.error || applicantsQuery.error) && <div role="alert" className="text-sm text-destructive">{(jobsQuery.error ?? applicantsQuery.error)?.message} <button onClick={() => { void jobsQuery.refetch(); void applicantsQuery.refetch(); }}>Retry</button></div>}
         {/* Top bar */}
         {/* z-40 only while a dropdown is open so results float above cards;
             otherwise the bar stays low and scrolls under the sticky nav. */}
         <div
           className={cn(
             'animate-fade-in relative flex flex-wrap items-center justify-between gap-3',
-            notifOpen || query.trim() ? 'z-40' : 'z-0',
+            notifOpen ? 'z-40' : 'z-0',
           )}
         >
           <div className="min-w-0 w-full sm:w-auto">
@@ -419,71 +405,6 @@ export function RecruiterDashboard() {
             </p>
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
-            <div className="relative min-w-0 flex-1 sm:flex-none" ref={searchRef}>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search jobs, people…"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="w-full pl-9 sm:w-56"
-              />
-              {searchResults && (
-                <div className="animate-pop-in absolute left-0 right-0 top-full z-30 mt-2 max-h-80 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl scrollbar-slim">
-                  {searchResults.jobs.length === 0 &&
-                    searchResults.applicants.length === 0 && (
-                      <p className="p-3 text-center text-xs text-muted-foreground">
-                        No matches for “{query}”.
-                      </p>
-                    )}
-                  {searchResults.jobs.length > 0 && (
-                    <p className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                      Jobs
-                    </p>
-                  )}
-                  {searchResults.jobs.map((job) => (
-                    <button
-                      key={job.id}
-                      type="button"
-                      onClick={() => {
-                        setQuery('');
-                        setSelectedJob(job);
-                      }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-primary-light"
-                    >
-                      <Briefcase className="h-4 w-4 shrink-0 text-primary" />
-                      <span className="truncate font-medium">{job.title}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        {job.applicants} applicants
-                      </span>
-                    </button>
-                  ))}
-                  {searchResults.applicants.length > 0 && (
-                    <p className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                      People
-                    </p>
-                  )}
-                  {searchResults.applicants.map((applicant) => (
-                    <button
-                      key={applicant.id}
-                      type="button"
-                      onClick={() => {
-                        setQuery('');
-                        setSelectedApplicant(applicant);
-                      }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-primary-light"
-                    >
-                      <Avatar name={applicant.name} className="h-6 w-6 text-[9px]" />
-                      <span className="truncate font-medium">
-                        {applicant.name}
-                      </span>
-                      <span className="ml-auto">
-                        <StatusChip status={applicant.status} />
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
 
             {/* Notifications dropdown, opened from the navbar bell */}
             <div>
@@ -618,10 +539,7 @@ export function RecruiterDashboard() {
                       <span className="h-2 w-2 rounded-full bg-primary" />
                       Applications
                     </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-info" />
-                      Interviews
-                    </span>
+                     {/* <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-info" />Interviews</span> */} 
                   </div>
                 </div>
                 <ApplicationsChart />
@@ -655,7 +573,7 @@ export function RecruiterDashboard() {
                     >
                       <button
                         type="button"
-                        onClick={() => setSelectedApplicant(applicant)}
+                        onClick={() => openApplicant(applicant)}
                         className="flex w-full items-center gap-3 rounded-lg p-1 text-left transition-colors hover:bg-primary-light"
                       >
                         <Avatar name={applicant.name} />
@@ -700,6 +618,7 @@ export function RecruiterDashboard() {
                   .slice(0, 4)
                   .map((job) => (
                     <button
+                      key={job.id}
                       type="button"
                       title="Open job details"
                       onClick={() => setSelectedJob(job)}
@@ -734,6 +653,7 @@ export function RecruiterDashboard() {
           <JobsView
             jobs={jobs}
             onAdd={addJob}
+            posting={createJob.isPending}
             onSetStatus={setJobStatus}
             onViewApplicants={viewApplicantsFor}
             onOpenJob={setSelectedJob}
@@ -741,16 +661,32 @@ export function RecruiterDashboard() {
           />
         )}
 
+        {view === 'harvested' && <ViewedCandidatesView onOpenProfile={openViewedCandidate} />}
+        {viewedCandidateId && <ViewedCandidateDrawer candidateId={viewedCandidateId} onClose={() => setViewedCandidateId(null)} />}
+
         {view === 'applicants' && (
           <ApplicantsView
             applicants={applicants}
             onSetStatus={setApplicantStatus}
             filterJob={jobFilter}
             onClearJobFilter={() => setJobFilter(null)}
-            onOpen={setSelectedApplicant}
+            onOpen={openApplicant}
             statusFilter={statusFilter}
             onStatusFilterChange={setStatusFilter}
             onScheduleInterview={scheduleInterview}
+          />
+        )}
+
+        {view === 'messages' && (
+          <MessagesView
+            conversations={chat.threads.data ?? []}
+            onSend={(conversationId, text) => chat.send.mutate({ threadId: conversationId, text })}
+            onMarkRead={(conversationId) => chat.markRead.mutate(conversationId)}
+            selectedId={chatThreadId}
+            onSelect={setChatThreadId}
+            loading={chat.threads.isLoading}
+            sending={chat.send.isPending}
+            error={chatError}
           />
         )}
 
@@ -764,6 +700,8 @@ export function RecruiterDashboard() {
           onClose={() => setSelectedApplicant(null)}
           onSetStatus={setApplicantStatus}
           onScheduleInterview={scheduleInterview}
+          onMessage={openChat}
+          messageBusy={chat.openThread.isPending}
         />
 
         <JobDrawer
