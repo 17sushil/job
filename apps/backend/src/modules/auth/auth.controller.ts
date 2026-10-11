@@ -1,3 +1,4 @@
+import { PDFDocument } from 'pdf-lib';
 import { serviceRequest } from '../../common/http.js';
 import { hydratedCanvas } from '../resume/resume.controller.js';
 import { SearchHistory } from '../user/search-history.entity.js';
@@ -73,12 +74,13 @@ export const getSavedResume: RequestHandler = async (req, res, next) => {
       success: true,
       data: {
         resume: {
-          fileName: user.resumeFileName,
+          fileName: user.resumePdf ? user.resumeFileName.replace(/\.[^.]+$/, '') + '.pdf' : user.resumeFileName,
           dataBase64: user.resumePdf?.toString('base64') ?? user.resumeData,
           canvas: await hydratedCanvas(user),
           uploadedAt: user.resumeUploadedAt,
           parsedProfile: user.parsedProfile,
-          atsPdfBase64: user.resumePdf ? user.resumePdf.toString('base64') : null,
+          atsPdfBase64: user.resumeCanvas ? null : user.resumePdf?.toString('base64') ?? null,
+          atsPdfPages: !user.resumeCanvas && user.resumePdf ? (await PDFDocument.load(user.resumePdf)).getPageCount() : null,
         },
       },
     });
@@ -102,7 +104,7 @@ export const uploadResume: RequestHandler = async (req, res, next) => {
     if (!parsedProfile && env.ATS_API_KEY.length > 0) {
       try {
         const form = new FormData();
-        form.append('file', new Blob([fileBuffer], { type: 'application/pdf' }), fileName);
+        form.append('file', new Blob([fileBuffer], { type: String(fileName).toLowerCase().endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/pdf' }), fileName);
         form.append('max_pages', String(env.ATS_MAX_PAGES));
         const atsRes = await serviceRequest(`${env.ATS_ENDPOINT}/v1/format`, {
           method: 'POST',
@@ -112,7 +114,9 @@ export const uploadResume: RequestHandler = async (req, res, next) => {
         if (!atsRes.ok) {
           atsError = `Extraction service replied ${atsRes.status}`;
         } else {
-          parsedProfile = (await atsRes.json()) as Record<string, unknown>;
+          const extracted = await atsRes.json();
+          if (!extracted || typeof extracted !== 'object' || Array.isArray(extracted) || extracted.success === false) throw new Error('Invalid extraction');
+          parsedProfile = extracted as Record<string, unknown>;
         }
       } catch {
         atsError = 'Extraction service is unreachable right now';
@@ -121,22 +125,30 @@ export const uploadResume: RequestHandler = async (req, res, next) => {
       atsError = 'Extraction service is not configured on the server';
     }
 
-    /* The candidate's ATS-friendly copy: exactly 1 page, no brand stamp
-       (`no_watermark=true` — verified live). Any failure here never blocks the
+    /* The candidate's ATS-friendly copy: no requested brand stamp
+       (`no_watermark=true`). Any failure here never blocks the
        upload or the saved parsed JSON. */
     let atsPdf: Buffer | null = null;
+    let atsPdfPages: number | null = null;
     if (parsedProfile && env.ATS_API_KEY.length > 0) {
       try {
         const form = new FormData();
-        form.append('file', new Blob([fileBuffer], { type: 'application/pdf' }), fileName);
-        /* /v1/format/pdf is always exactly 1 page and takes no max_pages. */
+        form.append('file', new Blob([fileBuffer], { type: String(fileName).toLowerCase().endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/pdf' }), fileName);
+        /* Keep the candidate copy unwatermarked; validate the returned PDF. */
         form.append('no_watermark', 'true');
         const pdfRes = await serviceRequest(`${env.ATS_ENDPOINT}/v1/format/pdf`, {
           method: 'POST',
           headers: { 'X-API-Key': env.ATS_API_KEY },
           body: form,
         });
-        if (pdfRes.ok) atsPdf = Buffer.from(await pdfRes.arrayBuffer());
+        if (pdfRes.ok) {
+          const bytes = Buffer.from(await pdfRes.arrayBuffer());
+          if (bytes.subarray(0, 5).toString() !== '%PDF-') throw new Error('Invalid ATS PDF');
+          const pages = (await PDFDocument.load(bytes)).getPageCount();
+          if (pages < 1) throw new Error('Empty ATS PDF');
+          atsPdf = bytes;
+          atsPdfPages = pages;
+        }
       } catch {
         /* Upload still succeeds; the studio falls back to a browser render. */
       }
@@ -156,6 +168,7 @@ export const uploadResume: RequestHandler = async (req, res, next) => {
         parsed: parsedProfile,
         atsError,
         atsPdfBase64: atsPdf ? atsPdf.toString('base64') : null,
+        atsPdfPages,
       },
     });
   } catch (error) {

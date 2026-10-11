@@ -77,6 +77,7 @@ export interface ResumeView {
 export interface Applicant {
   id: string;
   candidateId?: string;
+  isApplication?: boolean;
   resumeUrl?: string;
   name: string;
   job: string;

@@ -33,7 +33,7 @@ import { cn } from '@/lib/utils';
 
 import { uploadResumeRequest, type AuthUser } from '@/features/auth/api';
 import { useSession, useSetSession } from '@/features/auth/queries';
-import { apiGet } from '@/lib/api-client';
+import { apiGet, apiPut } from '@/lib/api-client';
 import { fileAsBase64 } from '@/lib/files';
 
 import {
@@ -149,6 +149,8 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
   const result = incomingResult ?? (usingSaved ? restoredResult : null);
   const client = useQueryClient();
   const upload = useMutation({ mutationFn: (args: Parameters<typeof uploadResumeRequest>) => uploadResumeRequest(...args) });
+  const saveCanvas = useMutation({ mutationFn: (data: { fileName: string; pdfBase64: string; canvas: CanvasDocument; profile: CandidateProfile }) =>
+    apiPut<{ user: AuthUser; warning: string | null }>('/api/auth/resume/current', data) });
   const [tab, setTab] = useState<StudioTab>('preview');
   /* Local working copy; the Save button pushes it up (and to the database). */
   const [draft, setDraft] = useState<CandidateProfile>(profile);
@@ -231,7 +233,7 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
       const data = await upload.mutateAsync([candidate.name, dataBase64]);
       setUser(data.user);
       setDraft(current => ({ ...current, ...parseStoredProfile(data.user.parsedProfile) }));
-      client.setQueryData(['account', user?.id, 'resume'], { fileName: candidate.name, dataBase64, parsedProfile: data.user.parsedProfile, canvas: null, uploadedAt: new Date().toISOString() });
+      client.setQueryData(['account', user?.id, 'resume'], { fileName: candidate.name, dataBase64, parsedProfile: data.user.parsedProfile, canvas: null, atsPdfBase64: data.atsPdfBase64 ?? null, atsPdfPages: data.atsPdfPages ?? null, uploadedAt: new Date().toISOString() });
       setProgress({ step: 'Saved', percent: 100 });
       if (data.parsed) {
         const document = toResumeDocument(data.parsed);
@@ -254,8 +256,8 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
           onResultChange({
             ...base,
             blob: base64Pdf(data.atsPdfBase64),
-            pages: 1,
-            note: 'Your 1-page ATS resume is saved to your profile — download it, or edit it in the canvas editor.',
+            pages: data.atsPdfPages ?? 1,
+            note: 'Your ATS resume is saved to your profile — download it, or edit it in the canvas editor.',
           });
         } else {
           const { blob, pages } = resumePdf(document);
@@ -315,7 +317,7 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
         const data = await upload.mutateAsync([current.name, base64]);
         setUser(data.user);
         parsed = data.parsed;
-        client.setQueryData(['account', user?.id, 'resume'], { fileName: current.name, dataBase64: base64, parsedProfile: data.user.parsedProfile, canvas: null, uploadedAt: new Date().toISOString() });
+        client.setQueryData(['account', user?.id, 'resume'], { fileName: current.name, dataBase64: base64, parsedProfile: data.user.parsedProfile, canvas: null, atsPdfBase64: data.atsPdfBase64 ?? null, atsPdfPages: data.atsPdfPages ?? null, uploadedAt: new Date().toISOString() });
         if (!parsed) throw new Error(data.atsError ?? 'No structured resume sections are available.');
       }
       const document = toResumeDocument(parsed);
@@ -328,8 +330,6 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
     }
   }
 
-  /* The editor's action: render the canvas and hand the file to the device.
-     Nothing is written to the profile — the saved ATS resume stays as it is. */
   async function saveEdit(canvas: CanvasDocument) {
     if (saveLock.current) return;
     saveLock.current = true;
@@ -338,22 +338,22 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
     try {
       const { blob, pages } = resumePdfFromCanvas(canvas);
       const fileName = result?.fileName ?? 'edited-resume.pdf';
-      triggerDownload(blob, fileName);
-      onResultChange({
-        fileName,
-        blob,
-        pages,
-        generatedAt: new Date().toISOString(),
-        engine: 'service',
-        note: 'Edited in the canvas editor and downloaded to your device — this copy is not saved to your profile.',
-        canvas,
-      });
+      const pdfBase64 = await fileAsBase64(new File([blob], fileName, { type: 'application/pdf' }));
+      const data = await saveCanvas.mutateAsync({ fileName, pdfBase64, canvas, profile: draft });
+      client.setQueryData(['account', user?.id, 'resume'], { fileName, dataBase64: pdfBase64, canvas, parsedProfile: data.user.parsedProfile, uploadedAt: new Date().toISOString() });
+      setDraft(current => ({ ...current, ...parseStoredProfile(data.user.parsedProfile) }));
+      // Only replace the displayed document AFTER the database confirms success.
+      rawFileRef.current = new File([blob], fileName, { type: 'application/pdf' });
+      onFileChange(toUploadedFile(rawFileRef.current));
+      onResultChange({ fileName, blob, pages, generatedAt: new Date().toISOString(),
+        engine: 'service', note: 'Your latest edited resume is saved to your account.', canvas });
+      setUser(data.user);
       setEditing(null);
       setNeedsDecision(false);
       setTab('preview');
-      onNotify?.('Edited resume downloaded to your device.');
+      onNotify?.(data.warning ?? 'Saved. Your latest resume is now available to recruiters.');
     } catch (problem) {
-      setSaveError(problem instanceof Error ? problem.message : 'Could not render the edited resume. Your changes are still open in the editor.');
+      setSaveError(problem instanceof Error ? problem.message : 'Could not save. Your changes are still open in the editor.');
     } finally {
       saveLock.current = false;
       setSaving(false);
@@ -591,7 +591,7 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
                 <h3 className="text-sm font-semibold">ATS preview</h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {result
-                    ? 'Saved to your profile · 1-page ATS resume'
+                    ? 'Saved to your profile · ATS resume'
                     : 'Extract your resume — the ATS version appears here and is saved to your profile.'}
                 </p>
               </div>
@@ -599,7 +599,7 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
               {/* One column, in order: download the saved copy (once there is
                   one), edit in the canvas, or skip. The editor is offered from
                   the start — the preview area itself stays blank until an ATS
-                  resume exists. Editing renders a PDF on your device only. */}
+                  resume exists. Editing saves the current PDF and canvas to your account. */}
               <div className="space-y-2 rounded-2xl border border-border bg-muted/30 p-3">
                 {result && (
                   <Button className="w-full" onClick={download}>

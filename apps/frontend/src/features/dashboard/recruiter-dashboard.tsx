@@ -150,14 +150,11 @@ export function RecruiterDashboard() {
   const jobsQuery = useQuery({ queryKey: jobsKey, enabled: !!user,
     queryFn: async ({ signal }) => (await apiGet<{ jobs: JobRow[] }>('/api/jobs/mine', signal)).jobs.map(mapApiJob) });
   const applicantsQuery = useQuery({ queryKey: applicantsKey, enabled: !!user,
-    /* Always re-read: a candidate can replace their resume after applying, and
-       the app default (30 s stale + no refetch on focus) kept showing the old
-       one in an open tab. */
-    staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: true,
     /* Masked at the source: contact values are one-way tokens already. */
     queryFn: async ({ signal }) => (await apiGet<{ applicants: ApplicantApiRow[] }>('/api/applicants', signal)).applicants.map(mapApplicantRow) });
   const jobs = jobsQuery.data ?? INITIAL_JOBS;
   const applicants = applicantsQuery.data ?? [];
+  const submittedApplications = useMemo(() => applicants.filter(row => row.isApplication !== false), [applicants]);
   const setJobs = (update: (current: Job[]) => Job[]) => client.setQueryData(jobsKey, update(jobs));
   const setApplicants = (update: (current: Applicant[]) => Applicant[]) => client.setQueryData(applicantsKey, update(applicants));
   const createJob = useMutation({ mutationFn: (data: Record<string, unknown>) => apiPost<{ job: JobRow }>('/api/jobs', data) });
@@ -228,8 +225,8 @@ export function RecruiterDashboard() {
       },
       {
         label: 'Total applicants',
-        value: applicants.length,
-        delta: `${applicants.filter((a) => a.status === 'New').length} new in pipeline`,
+        value: submittedApplications.length,
+        delta: `${submittedApplications.filter((a) => a.status === 'New').length} new in pipeline`,
         icon: Users,
         hint: 'View all applicants',
         go: () => {
@@ -247,7 +244,7 @@ export function RecruiterDashboard() {
         go: () => setView('analytics'),
       },
     ],
-    [jobs, applicants],
+    [jobs, submittedApplications],
   );
 
   /* Working global search: matches jobs + applicants, click to jump in. */
@@ -343,7 +340,7 @@ export function RecruiterDashboard() {
   }
 
   const badges: Partial<Record<RecruiterView, number>> = {
-    applicants: applicants.filter((a) => a.status === 'New').length,
+    applicants: submittedApplications.filter((a) => a.status === 'New').length,
   };
 
   return (
@@ -531,13 +528,13 @@ export function RecruiterDashboard() {
                     View all
                   </button>
                 </div>
-                {applicants.length === 0 && (
+                {submittedApplications.length === 0 && (
                   <p className="py-6 text-center text-sm text-muted-foreground">
                     No applicants yet - they appear here as soon as someone applies.
                   </p>
                 )}
                 <ul className="max-h-80 space-y-3 overflow-y-auto pr-1 scrollbar-slim lg:max-h-64 xl:max-h-80">
-                  {applicants.slice(0, 5).map((applicant, index) => (
+                  {submittedApplications.slice(0, 5).map((applicant, index) => (
                     <li
                       key={applicant.id}
                       className="animate-fade-in-up"

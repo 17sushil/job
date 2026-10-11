@@ -12,8 +12,9 @@ export interface SavedResume {
   uploadedAt: string | null;
   parsedProfile: Record<string, unknown> | null;
   canvas: CanvasDocument | null;
-  /** The 1-page ATS PDF stored on the profile (users.resumePdf). */
+  /** The ATS PDF stored on the profile (users.resumePdf). */
   atsPdfBase64?: string | null;
+  atsPdfPages?: number | null;
 }
 
 const base64Pdf = (base64: string) =>
@@ -54,12 +55,12 @@ export function restoreResult(
     (document ? flowToCanvas(document) : null);
   const fileName = `${saved.fileName.replace(/\.[^.]+$/, '')}-ats-resume.pdf`;
 
-  /* The profile's stored ATS PDF wins: it is exactly what the service built. */
-  if (saved.atsPdfBase64) {
+  /* Use the stored ATS PDF only when there is no newer edited canvas. */
+  if (saved.atsPdfBase64 && !saved.canvas) {
     return {
       fileName,
       blob: base64Pdf(saved.atsPdfBase64),
-      pages: 1,
+      pages: saved.atsPdfPages ?? 1,
       generatedAt: saved.uploadedAt ?? new Date().toISOString(),
       engine: 'service',
       note: 'Your ATS resume, saved to your profile.',

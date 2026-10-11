@@ -26,12 +26,8 @@ candidateRoutes.use(
   requireRoles(UserRole.RECRUITER, UserRole.ADMIN, UserRole.SUPERADMIN),
 );
 
-/* The raw directory is an admin lookup now: it used to hand any recruiter
-   every candidate row (email, mobile, parsed profile). Recruiters read their
-   own applicants from /api/applicants, where contact values are replaced by
-   one-way digests before they leave the server. `/:id` still works for a
-   recruiter — candidate.controller blurs the contact fields for that role. */
-candidateRoutes.get('/', requireRoles(UserRole.ADMIN, UserRole.SUPERADMIN), listCandidates);
+// Recruiters receive the anonymized directory; admins retain their account lookup.
+candidateRoutes.get('/', listCandidates);
 candidateRoutes.get(
   '/views',
   requireRoles(UserRole.RECRUITER),

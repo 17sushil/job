@@ -14,7 +14,7 @@ import { env } from '../../config/env.js';
  * the same token (the UI can tell two rows apart, and "same value" still
  * compares equal without revealing the value).
  */
-const CONTACT_PEPPER = env.CONTACT_PEPPER;
+const CONTACT_PEPPER = env.CONTACT_PEPPER ?? createHmac('sha256', env.JWT_SECRET).update('jobdev/contact-pepper/v1').digest();
 
 /** Keys whose values are contact data, compared after normalising case. */
 const CONTACT_KEYS = new Set([
@@ -45,7 +45,8 @@ const CONTACT_KEYS = new Set([
   'street',
 ]);
 
-export const isContactKey = (key: string) => CONTACT_KEYS.has(key.trim().toLowerCase());
+const contactKeys = new Set([...CONTACT_KEYS, 'contactEmail', 'emailAddress', 'homeAddress', 'skype', 'telegram', 'whatsapp'].map(key => key.toLowerCase().replace(/[^a-z]/g, '')));
+export const isContactKey = (key: string) => contactKeys.has(key.toLowerCase().replace(/[^a-z]/g, ''));
 
 /** `+977 9803 555 210` and `+9779803555210` are the same number. */
 export const normaliseContact = (value: string) => value.trim().toLowerCase().replace(/\s+/g, '');
@@ -106,6 +107,7 @@ export function collectContact(source: unknown, found: Record<string, string> = 
           const first = item.find((entry) => typeof entry === 'string' && entry.trim());
           if (typeof first === 'string' && !found[normalised]) found[normalised] = first.trim();
         }
+        if (item && typeof item === 'object') collectContact(item, found);
         continue;
       }
       collectContact(item, found);
@@ -241,4 +243,27 @@ export function contactSummary(parsedProfile: unknown): MaskedContact {
     linkedin: field('LinkedIn', pick(found, LINKEDIN_KEYS)),
     other,
   };
+}
+
+/** Public label, never derived from the candidate's readable name. */
+export const candidateAlias = (id: string) => `Candidate ${contactToken('candidate:' + id).slice(0, 8).toUpperCase()}`;
+
+/** Defense in depth for known identity values embedded in arbitrary CV prose.
+ * This protects explicit fields, not all possible inference from career history. */
+export function redactIdentity<T>(value: T, identities: string[]): T {
+  const needles = [...new Set(identities.map(v => v.normalize('NFKC').trim()).filter(Boolean))].sort((a, b) => b.length - a.length);
+  const walk = (item: unknown): unknown => {
+    if (typeof item === 'string') {
+      let output = item.normalize('NFKC');
+      for (const needle of needles) {
+        const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+        output = output.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'giu'), '[hidden identity]');
+      }
+      return redactContactText(output);
+    }
+    if (Array.isArray(item)) return item.map(walk);
+    if (item && typeof item === 'object') return Object.fromEntries(Object.entries(item).map(([key, val]) => [key, walk(val)]));
+    return item;
+  };
+  return walk(value) as T;
 }

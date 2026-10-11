@@ -34,8 +34,8 @@ describe('current resume storage', () => {
         const stream = loaded.context.lookup(ref) as PDFRawStream;
         return Buffer.from(decodePDFRawStream(stream).decode()).toString();
       }).join('');
-      expect(content).toContain(Buffer.from('JobDev').toString('hex').toUpperCase());
-      expect(content).toContain(Buffer.from('Shared through JobDev').toString('hex').toUpperCase());
+      expect(content).toContain(Buffer.from('JOBDEV').toString('hex').toUpperCase());
+      expect(content).toContain(Buffer.from('Shared through JOBDEV').toString('hex').toUpperCase());
     }
     expect((await PDFDocument.load(original)).getPageCount()).toBe(2);
   });

@@ -2630,6 +2630,8 @@ export function CandidateProfileViewsView({
   views = [],
   totalViews = 0,
   isLoading = false,
+  error,
+  onRetry,
 }: {
   views?: Array<{
     id: string;
@@ -2641,16 +2643,18 @@ export function CandidateProfileViewsView({
   }>;
   totalViews?: number;
   isLoading?: boolean;
+  error?: string;
+  onRetry?: () => void;
 }) {
   return (
     <div className="space-y-6 animate-fade-in-up">
       <div>
         <h2 className="text-xl font-bold">Profile Views</h2>
-        <p className="text-sm text-muted-foreground">
+        {!isLoading && !error && <p className="text-sm text-muted-foreground">
           {totalViews === 1
             ? '1 recruiter has viewed your profile.'
             : `${totalViews} recruiters have viewed your profile.`}
-        </p>
+        </p>}
       </div>
 
       <div className="space-y-3">
@@ -2659,7 +2663,8 @@ export function CandidateProfileViewsView({
             Loading view history…
           </p>
         )}
-        {!isLoading && views.length === 0 && (
+        {error && <div role="alert" className="text-sm text-destructive">{error} {onRetry && <button type="button" onClick={onRetry} className="font-semibold underline">Retry</button>}</div>}
+        {!isLoading && !error && views.length === 0 && (
           <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-sm">
             <Eye className="mx-auto mb-3 h-10 w-10 text-muted-foreground/50" />
             <h3 className="font-semibold">No profile views yet</h3>
@@ -2681,10 +2686,9 @@ export function CandidateProfileViewsView({
               </span>
               <div>
                 <p className="font-semibold">{view.recruiterName}</p>
-                <p className="text-sm text-muted-foreground">
-                  {view.companyName}
-                  {view.recruiterEmail ? ` · ${view.recruiterEmail}` : ''}
-                </p>
+                {(view.companyName || view.recruiterEmail) && <p className="text-sm text-muted-foreground">
+                  {[view.companyName, view.recruiterEmail].filter(Boolean).join(' · ')}
+                </p>}
               </div>
             </div>
             <p className="text-xs font-medium text-muted-foreground">
@@ -2695,7 +2699,7 @@ export function CandidateProfileViewsView({
                     month: 'short',
                     day: 'numeric',
                   })
-                : 'Recently'}
+                : 'Unknown date'}
             </p>
           </div>
         ))}

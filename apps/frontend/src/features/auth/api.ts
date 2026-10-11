@@ -36,8 +36,9 @@ type AuthResult = { user: AuthUser };
 export type ResumeUploadResult = AuthResult & {
   parsed: Record<string, unknown> | null;
   atsError: string | null;
-  /** Base64 of the 1-page ATS PDF the service built (null when unavailable). */
+  /** Base64 of the validated ATS PDF the service built (null when unavailable). */
   atsPdfBase64: string | null;
+  atsPdfPages?: number | null;
 };
 export const registerRequest = (data: RegisterPayload) =>
   apiPost<{ requiresOtp: boolean; identifier: string }>(

@@ -8,6 +8,7 @@ import { app } from '../../src/app.js';
 import { User, UserRole } from '../../src/modules/user/user.entity.js';
 import { Job } from '../../src/modules/job/job.entity.js';
 import { ProfileView } from '../../src/modules/candidate/profile-view.entity.js';
+import { candidateAlias } from '../../src/common/crypto/contact-token.js';
 import { signSession } from '../../src/modules/auth/auth.service.js';
 
 async function main() {
@@ -126,7 +127,7 @@ async function main() {
     );
     const first = await get('/api/candidates/views', 1);
     assert.equal(first.data.data.totalViews, 1);
-    assert.equal(first.data.data.views[0].candidateName, fixtures[0].name);
+    assert.equal(first.data.data.views[0].candidateName, candidateAlias(ids[0]));
     assert.equal(
       (await get(`/api/candidates/views?recruiterId=${ids[1]}`, 2)).data.data
         .totalViews,

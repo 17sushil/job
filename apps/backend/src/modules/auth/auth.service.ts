@@ -13,7 +13,6 @@ import type {
   UpdateProfileInput,
   VerifyOtpInput,
 } from './auth.schema.js';
-import type { UpdateUserInput } from '../user/user.types.js';
 
 export const COOKIE_NAME = 'jobdev_token';
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -194,7 +193,7 @@ export class AuthService {
     fileName: string,
     dataBase64: string,
     parsed?: Record<string, unknown> | null,
-    /** The 1-page ATS PDF from the service — becomes users.resumePdf. */
+    /** The validated ATS PDF from the service — becomes users.resumePdf. */
     atsPdf?: Buffer | null,
   ) {
     const user = await this.userRepo.findById(userId);
@@ -207,7 +206,7 @@ export class AuthService {
     const resume =
       parsed?.raw_resume_data && typeof parsed.raw_resume_data === 'object'
         ? (parsed.raw_resume_data as Record<string, unknown>)
-        : {};
+        : parsed ?? {};
     const basics =
       resume.basics && typeof resume.basics === 'object'
         ? (resume.basics as Record<string, unknown>)
@@ -218,7 +217,7 @@ export class AuthService {
     const rawEmail = text(basics.email).toLowerCase();
     const rawPhone = text(basics.phone);
 
-    /* For now the CV only fills identity fields that are still empty, so an
+    /* For now the CV only fills email/phone fields that are still empty, so an
        account's existing login credentials keep working after an upload. */
     let cvEmail = '';
     if (!user.email && rawEmail && EMAIL_PATTERN.test(rawEmail)) {
@@ -246,8 +245,8 @@ export class AuthService {
         /* Auto-fill the profile straight from the CV: name, email and phone
            number come from the extracted basics when present and still free. */
         ...(cvName ? { name: cvName } : {}),
-        ...(cvEmail ? { email: cvEmail } : {}),
-        ...(cvPhone ? { mobile: cvPhone } : {}),
+        ...(cvEmail && !current.email ? { email: cvEmail } : {}),
+        ...(cvPhone && !current.mobile ? { mobile: cvPhone } : {}),
       });
       return manager.getRepository(User).save(current);
     });

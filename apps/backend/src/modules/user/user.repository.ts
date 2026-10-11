@@ -55,6 +55,10 @@ export class UserRepository {
     });
   }
 
+  async findResumeProfile(userId: string) {
+    return this.repository.findOne({ where: { userId }, select: { ...accountFields, resumeCanvas: true, resumeUploadedAt: true } });
+  }
+
   async findByEmail(email: string) {
     return this.repository.findOne({ where: { email }, select: accountFields });
   }

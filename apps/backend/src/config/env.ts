@@ -20,7 +20,7 @@ const schema = z.object({
   ATS_MAX_PAGES: z.coerce.number().int().positive().default(2),
   /* Secret the recruiter view keys contact digests with (HMAC-SHA256).
      Change it and every token issued before stops matching. */
-  CONTACT_PEPPER: z.string().default('jobdev-dev-contact-pepper-change-me'),
+  CONTACT_PEPPER: z.string().min(32).optional(),
 }).refine(({ DB_POOL_MIN, DB_POOL_MAX }) => DB_POOL_MIN <= DB_POOL_MAX, {
   message: 'DB_POOL_MIN must not exceed DB_POOL_MAX',
   path: ['DB_POOL_MIN'],
@@ -28,6 +28,7 @@ const schema = z.object({
 
 export const env = schema.parse(process.env);
 if (env.NODE_ENV === 'production') {
+  if (env.CONTACT_PEPPER?.includes('change-me')) throw new Error('CONTACT_PEPPER must not use a public development placeholder.');
   if (env.JWT_SECRET.length < 32 || env.JWT_SECRET === 'supersecretjwtkey') throw new Error('Production requires a strong JWT_SECRET of at least 32 characters.');
   if (env.STATIC_OTP) throw new Error('STATIC_OTP is development-only. Configure real OTP delivery before production login.');
   if (env.WEB_ORIGINS.split(',').some(origin => !origin.trim().startsWith('https://'))) throw new Error('Set WEB_ORIGINS to your exact HTTPS frontend origin(s) in production.');

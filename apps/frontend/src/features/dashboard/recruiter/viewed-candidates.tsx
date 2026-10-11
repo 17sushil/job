@@ -3,12 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
-import type { AuthUser } from '@/features/auth/api';
+
 import { useSession } from '@/features/auth/queries';
 import { apiGet, apiPost } from '@/lib/api-client';
-import { parseStoredProfile } from '../candidate/profile-data';
-import type { Applicant } from './mock-data';
-import { ApplicantDrawer } from './views';
+
+
+import { ApplicantDrawer, mapApplicantRow, type ApplicantApiRow } from './views';
 
 interface ProfileViewRow {
   id: string;
@@ -130,7 +130,7 @@ export function ViewedCandidateDrawer({
   const detail = useQuery({
     queryKey: ['account', viewer?.id, 'candidate', candidateId],
     queryFn: ({ signal }) =>
-      apiGet<{ candidate: AuthUser }>(`/api/candidates/${candidateId}`, signal),
+      apiGet<{ candidate: ApplicantApiRow['candidate'] }>(`/api/candidates/${candidateId}`, signal),
     enabled: !!viewer,
   });
   if (!detail.data)
@@ -156,34 +156,7 @@ export function ViewedCandidateDrawer({
         </section>
       </div>
     );
-  const user = detail.data.candidate;
-  const profile = parseStoredProfile(user.parsedProfile);
-  const applicant: Applicant = {
-    id: user.id,
-    candidateId: user.id,
-    name: user.name || profile.name || 'Unnamed candidate',
-    job: profile.headline || 'Candidate profile',
-    status: 'New',
-    match: 0,
-    appliedDaysAgo: 0,
-    /* The API already blurred these for a recruiter (one-way digests). */
-    email: user.email ?? '',
-    phone: user.phone ?? '',
-    contactMasked: true,
-    location: profile.location ?? '',
-    summary: profile.about ?? '',
-    skills: profile.skills ?? [],
-    experience: profile.experience ?? [],
-    education: (profile.education ?? [])
-      .map((item) =>
-        [item.degree, item.school, item.period].filter(Boolean).join(' · '),
-      )
-      .join('\n'),
-    resumeUrl: user.resumeFileName
-      ? `/api/candidates/${user.id}/resume`
-      : undefined,
-  };
-  return (
-    <ApplicantDrawer applicant={applicant} onClose={onClose} profileOnly />
-  );
+  const candidate = detail.data.candidate;
+  const applicant = mapApplicantRow({ id: candidate.id, candidate, job: null, appliedAt: null, kind: 'candidate', status: 'AVAILABLE', match: 0 });
+  return <ApplicantDrawer applicant={applicant} onClose={onClose} profileOnly />;
 }

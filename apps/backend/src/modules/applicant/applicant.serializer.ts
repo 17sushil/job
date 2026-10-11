@@ -3,6 +3,9 @@ import type { Job } from '../job/job.entity.js';
 import type { User } from '../user/user.entity.js';
 import {
   contactSummary,
+  candidateAlias,
+  redactIdentity,
+  collectContact,
   maskContactFields,
   redactContactTextDeep,
   type MaskedContact,
@@ -33,7 +36,9 @@ export type ResumeView = {
 export type ApplicantPayload = {
   id: string;
   status: string;
-  appliedAt: string;
+  appliedAt: string | null;
+  kind: 'application' | 'candidate';
+  match: number;
   job: { id: string; title: string; company: string; location: string | null } | null;
   candidate: {
     id: string;
@@ -68,11 +73,13 @@ const array = (value: unknown): unknown[] => (Array.isArray(value) ? value : [])
 const ENVELOPES = ['resume', 'data', 'result', 'parsed', 'document', 'profile', 'output', 'payload', 'raw_resume_data', 'resume_data', 'response', 'content'];
 
 function inner(parsed: Record<string, unknown>): Record<string, unknown> {
-  for (const key of ENVELOPES) {
-    const candidate = object(parsed[key]);
-    if (Object.keys(candidate).length) return candidate;
+  let current = parsed;
+  for (let depth = 0; depth < 6; depth++) {
+    const child = ENVELOPES.map(key => object(decodeJson(current[key]))).find(value => Object.keys(value).length);
+    if (!child) break;
+    current = child;
   }
-  return parsed;
+  return current;
 }
 
 const firstOf = (source: Record<string, unknown>, keys: string[]): string => {
@@ -123,14 +130,15 @@ function decodeJson(value: unknown): unknown {
  * blank sheet with junk headings.
  */
 function canvasTextLines(payload: Record<string, unknown>): string[] {
-  const runs: Array<{ y: number; x: number; size: number; text: string }> = [];
-  for (const page of array(payload.pages)) {
+  const runs: Array<{ pageIndex: number; y: number; x: number; size: number; text: string }> = [];
+  for (const [pageIndex, page] of array(payload.pages).entries()) {
     for (const item of array(object(page).objects)) {
       const run = object(item);
-      if (typeof run.text !== 'string') continue;
+      if ((run.type && run.type !== 'text') || typeof run.text !== 'string' || run.hidden) continue;
       const line = text(run.text);
       if (!line) continue;
       runs.push({
+        pageIndex,
         y: Number(run.y ?? 0),
         x: Number(run.x ?? 0),
         size: Number(object(run.style).size ?? 0),
@@ -138,7 +146,7 @@ function canvasTextLines(payload: Record<string, unknown>): string[] {
       });
     }
   }
-  runs.sort((a, b) => a.y - b.y || a.x - b.x);
+  runs.sort((a, b) => a.pageIndex - b.pageIndex || a.y - b.y || a.x - b.x);
   return runs.map((run) => run.text);
 }
 
@@ -232,6 +240,7 @@ export function buildResumeView(parsedProfile: unknown): ResumeView {
         return firstOf(record, ['name', 'skill', 'text']);
       })
       .filter(Boolean),
+    ...array(root.skills).flatMap(item => listOf(object(item).keywords)),
     ...listOf(root.technical_skills),
     ...listOf(root.technologies),
   ];
@@ -252,8 +261,9 @@ export function buildResumeView(parsedProfile: unknown): ResumeView {
     'expectedSalary', 'noticePeriod', 'seniority', 'workModes', 'openToWork', 'avatar',
   ]);
   const sections: ResumeLine[] = [];
+  const professional = new Set(['projects', 'certifications', 'certificates', 'languages', 'awards', 'publications', 'volunteer', 'volunteering', 'interests', 'achievements', 'training', 'courses', 'hobbies']);
   for (const [key, value] of Object.entries(root)) {
-    if (known.has(key)) continue;
+    if (known.has(key) || !professional.has(key.toLowerCase())) continue;
     const lines = listOf(value);
     if (!lines.length) continue;
     sections.push({ heading: key.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()), lines });
@@ -295,34 +305,58 @@ export function buildResumeView(parsedProfile: unknown): ResumeView {
 
 /* ---------------------------------------------------------------- applicant */
 
-export function toApplicantPayload(
-  application: Application,
-  candidate: User | null,
-  job: Job | null,
-): ApplicantPayload {
-  const parsed = decodeJson(candidate?.parsedProfile ?? null);
+export function toRecruiterCandidate(candidate: User): ApplicantPayload['candidate'] {
+  const parsed = decodeJson(candidate.parsedProfile ?? null);
+  // Latest edited canvas wins, even when external extraction was unavailable.
+  const resume = buildResumeView(candidate.resumeCanvas ?? parsed);
+  const structured = buildResumeView(parsed);
+  const alias = candidateAlias(candidate.userId);
+  const contacts = contactSummary({ ...object(parsed), account: { email: candidate.email, phone: candidate.mobile } });
+  const root = inner(object(parsed));
+  const identities: string[] = [];
+  const collectIdentities = (value: unknown, identityContext = true) => {
+    if (Array.isArray(value)) { value.forEach(item => collectIdentities(item, identityContext)); return; }
+    for (const [key, item] of Object.entries(object(value))) {
+      const normalized = key.toLowerCase().replace(/[^a-z]/g, '');
+      if (['fullname', 'firstname', 'lastname', 'candidatename'].includes(normalized) || (normalized === 'name' && identityContext)) {
+        if (typeof item === 'string') identities.push(item);
+      }
+      if (item && typeof item === 'object') collectIdentities(item, ['basics', 'personal', 'personaldetails', 'identity', 'contact', ...ENVELOPES].includes(normalized));
+    }
+  };
+  collectIdentities(parsed);
+  const names = [candidate.name, resume.name, structured.name, ...identities,
+    ...['name', 'full_name', 'fullName', 'candidate_name', 'firstName', 'lastName'].map(key => text(root[key])),
+    candidate.email, candidate.mobile, candidate.contactNumber,
+    ...Object.values(collectContact(parsed)),
+  ].filter((value): value is string => Boolean(value));
+  const sanitized = redactIdentity(resume, names);
+  sanitized.name = alias;
+  // Never expose arbitrary parsed JSON, original filenames, avatar/photo,
+  // original PDF/image bytes, or canvas metadata to a recruiter.
   return {
-    id: application.applicationId,
-    status: application.status,
-    appliedAt: application.createdAt?.toISOString?.() ?? String(application.createdAt ?? ''),
-    job: job
-      ? { id: job.id, title: job.title, company: job.company, location: job.location ?? null }
-      : null,
-    candidate: {
-      id: application.candidateId,
-      /* Name and location are not secret — the recruiter has to know who they
-         are looking at. Everything reachable by email/phone/link is blurred. */
-      name: candidate?.name ?? 'Candidate',
-      /* Location stays readable on purpose — it is screening data, not contact
-         data, and it is not one of the fields this round is hiding. */
-      location: readableLocation(parsed),
-      contactMode: 'blurred',
-      contact: contactSummary(parsed),
-      resumeFileName: candidate?.resumeFileName ?? null,
-      resumeUploadedAt: candidate?.resumeUploadedAt?.toISOString?.() ?? null,
-      hasResume: Boolean(parsed || candidate?.resumeFileName),
-      resume: buildResumeView(parsed),
-    },
+    id: candidate.userId, name: alias,
+    location: redactIdentity(readableLocation(parsed), names),
+    contactMode: 'blurred', contact: contacts,
+    resumeFileName: candidate.resumeFileName ? 'candidate-resume.pdf' : null,
+    resumeUploadedAt: candidate.resumeUploadedAt?.toISOString?.() ?? null,
+    hasResume: Boolean(candidate.resumeFileName || candidate.resumeCanvas || parsed),
+    resume: sanitized,
+  };
+}
+
+export function toApplicantPayload(application: Application | null, candidate: User, job: Job | null): ApplicantPayload {
+  const safe = toRecruiterCandidate(candidate);
+  const haystack = `${job?.title ?? ''} ${job?.description ?? ''} ${job?.metadata?.minimumQualifications ?? ''}`.toLowerCase();
+  const matches = safe.resume.skills.filter(skill => haystack.includes(skill.toLowerCase())).length;
+  return {
+    id: application?.applicationId ?? candidate.userId,
+    kind: application ? 'application' : 'candidate',
+    status: application?.status ?? 'AVAILABLE',
+    appliedAt: application?.createdAt?.toISOString() ?? null,
+    match: job && safe.resume.skills.length ? Math.round(matches / safe.resume.skills.length * 100) : 0,
+    job: job ? { id: job.id, title: job.title, company: job.company, location: job.location ?? null } : null,
+    candidate: safe,
   };
 }
 
@@ -330,11 +364,7 @@ function readableLocation(parsedProfile: unknown): string | null {
   const root = inner(object(decodeJson(parsedProfile)));
   const basics = object(root.basics);
   const source = Object.keys(basics).length ? { ...root, ...basics } : root;
-  for (const key of ['location', 'city', 'country', 'region']) {
-    const value = text(source[key]);
-    if (value) return value;
-  }
-  return null;
+  const location = object(source.location);
+  // Only explicit coarse fields are shared; free-form location may be an address.
+  return [text(location.city || source.city), text(location.region || source.region), text(location.countryCode || source.country)].filter(Boolean).join(', ') || null;
 }
-
-export const maskForOwner = (parsedProfile: unknown) => maskContactFields(decodeJson(parsedProfile));

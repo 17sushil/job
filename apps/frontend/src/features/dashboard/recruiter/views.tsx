@@ -1,4 +1,6 @@
 'use client';
+import { useQuery } from '@tanstack/react-query';
+import { apiGet, apiBlob } from '@/lib/api-client';
 
 import {
   BadgeCheck,
@@ -142,6 +144,28 @@ export function ApplicantDrawer({
   const [scheduling, setScheduling] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
   const { data: viewer } = useSession();
+  const detail = useQuery({
+    queryKey: ['account', viewer?.id, 'masked-resume-detail', applicant?.id],
+    enabled: !!viewer && !!applicant && resumeOpen,
+    staleTime: 0, gcTime: 0,
+    queryFn: async ({ signal }) => applicant!.isApplication
+      ? (await apiGet<{ applicant: ApplicantApiRow }>(`/api/applicants/${applicant!.id}`, signal)).applicant.candidate
+      : (await apiGet<{ candidate: ApplicantApiRow['candidate'] }>(`/api/candidates/${applicant!.candidateId}`, signal)).candidate,
+  });
+  const pdf = useQuery({
+    queryKey: ['account', viewer?.id, 'masked-resume-pdf', applicant?.id],
+    enabled: !!viewer && resumeOpen && !!applicant?.resumeUrl && !!detail.data?.hasResume,
+    queryFn: ({ signal }) => apiBlob(applicant!.resumeUrl!, signal),
+    staleTime: 0, gcTime: 0,
+  });
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pdf.data || !resumeOpen) { setPdfUrl(null); return; }
+    const url = URL.createObjectURL(pdf.data);
+    setPdfUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pdf.data, resumeOpen]);
+
   useEffect(() => { setResumeOpen(false); }, [applicant?.id]);
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -152,6 +176,7 @@ export function ApplicantDrawer({
   }, [onClose, resumeOpen]);
 
   if (!applicant) return null;
+  const readOnlyProfile = profileOnly || applicant.isApplication === false;
 
   return (
     <div className="fixed inset-0 z-[60]">
@@ -161,14 +186,16 @@ export function ApplicantDrawer({
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="font-semibold">{applicant.name} — JobDev resume</h3>
               <div className="flex items-center gap-3">
+                {pdfUrl && <a href={pdfUrl} download="JobDev-candidate-resume.pdf" className="text-sm font-semibold text-primary">Download PDF</a>}
                 <Button variant="ghost" size="sm" onClick={() => setResumeOpen(false)} aria-label="Close resume"><X className="h-4 w-4" /></Button>
               </div>
             </div>
-            {applicant.resume ? (
+            {pdf.isError && <p role="alert" className="text-sm text-destructive">{pdf.error.message} <button onClick={() => pdf.refetch()}>Retry PDF</button></p>}
+            {detail.isPending ? <p role="status">Loading anonymized resume…</p> : detail.isError ? <p role="alert">{detail.error.message} <button onClick={() => detail.refetch()}>Retry resume</button></p> : detail.data?.resume ? (
               <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-muted/30 p-2 scrollbar-slim">
                 <ResumePaper
-                  resume={applicant.resume}
-                  contact={applicant.contact}
+                  resume={detail.data.resume}
+                  contact={detail.data.contact}
                   watermarkLabel={viewer?.email ?? viewer?.name ?? 'Recruiter view'}
                 />
               </div>
@@ -199,10 +226,11 @@ export function ApplicantDrawer({
             <Avatar name={applicant.name} className="h-14 w-14 text-base ring-2 ring-white/40" />
             <div>
               <h3 className="text-lg font-bold">{applicant.name}</h3>
+              {applicant.contactMasked && <p className="text-xs text-white/80">Name and contact details hidden</p>}
               <p className="text-sm text-white/80">{applicant.job}</p>
               <div className="mt-1.5">
                 <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold backdrop-blur">
-                  {profileOnly ? 'Viewed profile' : applicant.status}
+                  {readOnlyProfile ? 'Candidate profile' : applicant.status}
                 </span>
               </div>
             </div>
@@ -230,9 +258,9 @@ export function ApplicantDrawer({
                 <ContactRow icon={Globe} value={link.token ?? ''} label={link.label} masked={applicant.contactMasked} />
               </p>
             ))}
-            {(applicant.location || !profileOnly) && <p className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="h-4 w-4 text-primary" /> {applicant.location}{!profileOnly && ' · '}
-              {!profileOnly && <>applied {applicant.appliedDaysAgo}d ago</>}
+            {(applicant.location || !readOnlyProfile) && <p className="flex items-center gap-2 text-muted-foreground">
+              <MapPin className="h-4 w-4 text-primary" /> {applicant.location}{!readOnlyProfile && ' · '}
+              {!readOnlyProfile && <>applied {applicant.appliedDaysAgo}d ago</>}
             </p>}
           </section>
 
@@ -243,7 +271,7 @@ export function ApplicantDrawer({
             </p>
           )}
 
-          {!profileOnly && <section>
+          {!readOnlyProfile && <section>
             <div className="mb-1 flex items-center justify-between text-sm">
               <span className="font-semibold">ATS match score</span>
               <MatchBar value={applicant.match} />
@@ -297,13 +325,13 @@ export function ApplicantDrawer({
 
           <section>
             <h4 className="mb-1.5 font-semibold">Resume / CV</h4>
-            <Button variant="outline" className="w-full" disabled={!applicant.resume} onClick={() => setResumeOpen(true)}>
+            <Button variant="outline" className="w-full" disabled={!applicant.hasResume} onClick={() => setResumeOpen(true)}>
               <FileText className="h-4 w-4" />
-              {applicant.resume ? 'View resume' : 'No resume uploaded'}
+              {applicant.hasResume ? 'View resume' : 'No resume uploaded'}
             </Button>
             {applicant.resume && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Parsed from {applicant.resumeFileName ?? 'the uploaded file'} · contact details hidden
+                Anonymized text copy · original images and identity details withheld
               </p>
             )}
           </section>
@@ -312,7 +340,7 @@ export function ApplicantDrawer({
         {/* Workflow actions per stage:
             New = Shortlist/Reject, Shortlisted = Interview/Reject,
             Interview = Hire/Reschedule/Reject, Hired/Rejected = terminal. */}
-        {!profileOnly && <div className="sticky bottom-0 flex gap-2 border-t border-border bg-card p-4">
+        {!readOnlyProfile && <div className="sticky bottom-0 flex gap-2 border-t border-border bg-card p-4">
           {applicant.status === 'New' && (
             <Button
               variant="outline"
@@ -733,7 +761,7 @@ export function ApplicantsView({
       const q = query.trim().toLowerCase();
       return applicants.filter(
         (applicant) =>
-          (statusFilter === 'All' || applicant.status === statusFilter) &&
+          (statusFilter === 'All' || (applicant.isApplication !== false && applicant.status === statusFilter)) &&
           (!filterJob || applicant.job === filterJob) &&
           (applicant.name.toLowerCase().includes(q) || 
            (applicant.skills || []).some(s => s.toLowerCase().includes(q)) || 
@@ -767,7 +795,7 @@ export function ApplicantsView({
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search by name, role, or skill…"
+              placeholder="Search by candidate, role, or skill…"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               className="w-full pl-9"
@@ -834,7 +862,7 @@ export function ApplicantsView({
             <span className="ml-1 opacity-70">
               {filter === 'All'
                 ? applicants.length
-                : applicants.filter((a) => a.status === filter).length}
+                : applicants.filter((a) => a.isApplication !== false && a.status === filter).length}
             </span>
           </button>
         ))}
@@ -858,7 +886,7 @@ export function ApplicantsView({
             <div className="min-w-0 flex-1">
               <p className="truncate font-semibold">{applicant.name}</p>
               <p className="truncate text-sm text-muted-foreground">
-                {applicant.job} · applied {applicant.appliedDaysAgo}d ago
+                {applicant.job}{applicant.isApplication !== false && <> · applied {applicant.appliedDaysAgo}d ago</>}
                 {applicant.status === 'Interview' && applicant.scheduledDate && (
                   <span className="font-medium text-warning">
                     {' '}· interview {applicant.scheduledDate}
@@ -872,15 +900,15 @@ export function ApplicantsView({
                 matchTone(applicant.match),
               )}
             >
-              {applicant.match}%
+              {applicant.isApplication === false ? '—' : `${applicant.match}%`}
             </span>
             <span className="flex w-28 justify-center">
-              <StatusChip status={applicant.status} />
+              {applicant.isApplication === false ? <span className="text-xs text-muted-foreground">Available</span> : <StatusChip status={applicant.status} />}
             </span>
             {/* Workflow actions: New = shortlist/reject, Shortlisted = interview/
                 reject, Interview = hire/reject, Hired/Rejected = terminal.
                 Fixed width keeps every row's columns perfectly aligned. */}
-            <div className="flex w-28 justify-end gap-1.5 transition-opacity duration-200 md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
+            {applicant.isApplication !== false && <div className="flex w-28 justify-end gap-1.5 transition-opacity duration-200 md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100">
               {applicant.status === 'New' && (
                 <button
                   type="button"
@@ -948,7 +976,7 @@ export function ApplicantsView({
                   <RotateCcw className="h-4 w-4" />
                 </button>
               )}
-            </div>
+            </div>}
           </div>
         ))}
         {visible.length === 0 && (
@@ -1602,19 +1630,16 @@ export function AnalyticsView() {
 export interface ApplicantApiRow {
   id: string;
   status: string;
-  appliedAt: string;
+  appliedAt: string | null;
+  kind: 'application' | 'candidate';
+  match: number;
   job: { id: string; title: string; company: string; location: string | null } | null;
   candidate: {
     id: string;
     name: string;
     location: string | null;
     contactMode: 'blurred';
-    contact: {
-      email: { token: string | null };
-      phone: { token: string | null };
-      linkedin: { token: string | null };
-      other: Array<{ label: string; token: string | null }>;
-    };
+    contact: NonNullable<Applicant['contact']>;
     resumeFileName: string | null;
     hasResume: boolean;
     resume: NonNullable<Applicant['resume']>;
@@ -1636,9 +1661,11 @@ export function mapApplicantRow(row: ApplicantApiRow): Applicant {
   return {
     id: row.id,
     candidateId: row.candidate.id,
+    isApplication: row.kind === 'application',
+    resumeUrl: row.candidate.hasResume ? (row.kind === 'application' ? `/api/applicants/${row.id}/resume/pdf` : `/api/candidates/${row.candidate.id}/resume`) : undefined,
     name: row.candidate.name,
-    job: row.job?.title ?? '',
-    match: 0,
+    job: row.job?.title ?? 'Available candidate',
+    match: row.match,
     status: APPLICANT_STATUS_MAP[row.status.toUpperCase()] ?? 'New',
     appliedDaysAgo: days,
     email: row.candidate.contact.email.token ?? '',

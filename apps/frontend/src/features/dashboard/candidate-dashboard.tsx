@@ -683,7 +683,7 @@ export function CandidateDashboard() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{atsName}</p>
                     <p className="text-sm text-muted-foreground">
-                      PDF · {atsResult?.pages ?? 1} page{(atsResult?.pages ?? 1) === 1 ? '' : 's'} ·
+                      PDF ·
                       saved with your profile
                     </p>
                   </div>
@@ -813,6 +813,8 @@ export function CandidateDashboard() {
             views={profileViewsQuery.data?.views ?? []}
             totalViews={profileViewsQuery.data?.totalViews ?? 0}
             isLoading={profileViewsQuery.isPending}
+            error={profileViewsQuery.error?.message}
+            onRetry={() => { void profileViewsQuery.refetch(); }}
           />
         )}
 

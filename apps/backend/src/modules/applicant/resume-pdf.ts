@@ -1,4 +1,10 @@
-import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+// fontkit's complex-script shaping uses the regenerator runtime.
+import 'regenerator-runtime/runtime.js';
+import fontkit from '@pdf-lib/fontkit';
+import { readFileSync, existsSync } from 'node:fs';
+import path from 'node:path';
+import { AppError } from '../../common/errors/AppError.js';
+import { PDFDocument, degrees, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { ApplicantPayload } from './applicant.serializer.js';
 
 /**
@@ -9,8 +15,8 @@ import type { ApplicantPayload } from './applicant.serializer.js';
  * fact, so the only safe PDF is one composed from the masked view
  * (`toApplicantPayload`) — the tokenised contact fields never enter this file.
  *
- * Nothing new is needed to draw it: pdf-lib is already a backend dependency
- * (it stamps the JOBDEV watermark), and everything below is text layout.
+ * pdf-lib lays out the text; bundled OFL Noto fonts support Latin and
+ * Devanagari without depending on an external font service.
  */
 
 const A4 = { width: 595.28, height: 841.89 };
@@ -24,15 +30,28 @@ const MUTED = rgb(0.42, 0.45, 0.5);
 const HAIRLINE = rgb(0.86, 0.87, 0.89);
 const REDACTION = rgb(0.82, 0.84, 0.86);
 
-type Masked = ApplicantPayload['candidate']['contact'];
+const fontCache = new Map<string, Buffer>();
+function fontBytes(name: string) {
+  let bytes = fontCache.get(name);
+  if (!bytes) {
+    const sourcePath = path.join(__dirname, '../../../assets/fonts', name);
+    const compiledPath = path.join(__dirname, '../../../../assets/fonts', name);
+    bytes = readFileSync(existsSync(sourcePath) ? sourcePath : compiledPath);
+    fontCache.set(name, bytes);
+  }
+  return bytes;
+}
+
 
 export async function renderApplicantPdf(
   payload: ApplicantPayload,
   viewerLabel: string,
 ): Promise<Uint8Array> {
   const document = await PDFDocument.create();
-  const regular = await document.embedFont(StandardFonts.Helvetica);
-  const bold = await document.embedFont(StandardFonts.HelveticaBold);
+  document.registerFontkit(fontkit);
+  const family = /[\u0900-\u097f]/u.test(JSON.stringify(payload.candidate.resume)) ? 'NotoSansDevanagari' : 'NotoSans';
+  const regular = await document.embedFont(fontBytes(`${family}-Regular.ttf`), { subset: true });
+  const bold = await document.embedFont(fontBytes(`${family}-Bold.ttf`), { subset: true });
 
   const { resume, contact, location } = payload.candidate;
   const width = A4.width - MARGIN * 2;
@@ -43,7 +62,16 @@ export async function renderApplicantPdf(
   const wrap = (value: string, font: PDFFont, size: number, maxWidth = width): string[] => {
     const rows: string[] = [];
     let current = '';
+    const words: string[] = [];
     for (const word of value.split(/\s+/).filter(Boolean)) {
+      let chunk = '';
+      for (const character of Array.from(word)) {
+        if (chunk && font.widthOfTextAtSize(chunk + character, size) > maxWidth) { words.push(chunk); chunk = ''; }
+        chunk += character;
+      }
+      if (chunk) words.push(chunk);
+    }
+    for (const word of words) {
       const next = current ? `${current} ${word}` : word;
       if (font.widthOfTextAtSize(next, size) <= maxWidth) current = next;
       else {
@@ -56,6 +84,7 @@ export async function renderApplicantPdf(
   };
 
   const newPage = () => {
+    if (document.getPageCount() >= 100) throw new AppError(413, 'Resume is too long to render as a recruiter PDF');
     page = document.addPage([A4.width, A4.height]);
     y = A4.height - MARGIN;
   };

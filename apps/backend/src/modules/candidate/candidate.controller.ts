@@ -3,7 +3,8 @@ import { AppError } from '../../common/errors/AppError.js';
 import { UserRole } from '../user/user.entity.js';
 import { UserRepository } from '../user/user.repository.js';
 import { toSafeUser } from '../auth/auth.service.js';
-import { contactTokenShort } from '../../common/crypto/contact-token.js';
+import { toRecruiterCandidate } from '../applicant/applicant.serializer.js';
+import { contactTokenShort, candidateAlias } from '../../common/crypto/contact-token.js';
 
 import { z } from 'zod';
 import { AppDataSource } from '../../database/data-source.js';
@@ -16,12 +17,12 @@ const blurred = (value?: string | null) => (value && value.trim() ? contactToken
 const candidateIdSchema = z.string().uuid('Invalid candidate id');
 const userRepo = new UserRepository();
 
-export const listCandidates: RequestHandler = async (_req, res, next) => {
+export const listCandidates: RequestHandler = async (req, res, next) => {
   try {
     const candidates = await userRepo.findByRole(UserRole.CANDIDATE);
     res.json({
       success: true,
-      data: { candidates: candidates.map(toSafeUser) },
+      data: { candidates: candidates.map(candidate => req.user!.role === UserRole.RECRUITER ? toRecruiterCandidate(candidate) : toSafeUser(candidate)) },
     });
   } catch (error) {
     next(error);
@@ -30,29 +31,13 @@ export const listCandidates: RequestHandler = async (_req, res, next) => {
 
 export const getCandidate: RequestHandler = async (req, res, next) => {
   try {
-    const user = await userRepo.findById(
+    const user = await userRepo.findResumeProfile(
       candidateIdSchema.parse(req.params.id),
     );
     if (!user || user.isDeleted || user.role !== UserRole.CANDIDATE) {
       throw new AppError(404, 'Candidate not found');
     }
-    const safe = toSafeUser(user);
-    if (req.user!.role === UserRole.RECRUITER) {
-      res.json({
-        success: true,
-        data: {
-          candidate: {
-            ...safe,
-            identifier: blurred(safe.identifier),
-            email: blurred(safe.email),
-            phone: blurred(safe.phone),
-            contactNumber: blurred(safe.contactNumber),
-          },
-        },
-      });
-      return;
-    }
-    res.json({ success: true, data: { candidate: safe } });
+    res.json({ success: true, data: { candidate: req.user!.role === UserRole.RECRUITER ? toRecruiterCandidate(user) : toSafeUser(user) } });
   } catch (error) {
     next(error);
   }
@@ -127,8 +112,9 @@ export const getProfileViews: RequestHandler = async (req, res, next) => {
       .addOrderBy('view.id', 'DESC')
       .getRawMany();
     /* The list may show the field, never the address. */
-    const masked = views.map((view: { candidateEmail?: string | null }) => ({
+    const masked = views.map((view: { candidateId: string; candidateEmail?: string | null }) => ({
       ...view,
+      candidateName: candidateAlias(view.candidateId),
       candidateEmail: blurred(view.candidateEmail),
     }));
     res.json({ success: true, data: { totalViews: masked.length, views: masked } });
@@ -171,7 +157,7 @@ export const getOwnProfileViews: RequestHandler = async (req, res, next) => {
           viewedAt: v.viewedAt,
           recruiterId: v.recruiterId,
           recruiterName: v.recruiterName || 'Recruiter',
-          companyName: v.companyName || 'Company',
+          companyName: v.companyName || '',
           recruiterEmail: v.recruiterEmail || '',
         })),
       },

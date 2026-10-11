@@ -2086,9 +2086,9 @@ export function ResumeEditor({
 
           <div className="space-y-2 border-t border-border bg-card p-4">
             {saveError && <p role="alert" className="text-xs text-destructive">{saveError}</p>}
-            <Button className="w-full" disabled={saving || busy} onClick={save} title="Download (Ctrl+S) — renders your edit as a PDF on your device. Nothing is saved to your profile.">
+            <Button className="w-full" disabled={saving || busy} onClick={save} title="Save (Ctrl+S) — replaces your saved resume, canvas and images.">
               <Check className="h-4 w-4" />
-              {saving ? 'Rendering your PDF…' : 'Download edited PDF'}
+              {saving ? 'Saving…' : 'Save changes'}
             </Button>
             <Button
               variant="outline"

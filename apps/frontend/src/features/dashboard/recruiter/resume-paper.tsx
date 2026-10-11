@@ -19,8 +19,8 @@ import type { Applicant } from './mock-data';
 /* --- the watermark -------------------------------------------------------- */
 /**
  * Diagonal JOBDEV layer + one traceability line. It sits INSIDE the sheet, so
- * it cannot be scrolled away, and it carries who viewed the resume and when —
- * a screenshot or an edited copy still points back at the viewer.
+ * it carries the viewer label while present. It is not tamper-proof and
+ * cannot guarantee that screenshots or edited copies remain attributable.
  *
  * It is deterrence, not security: the DOM can be edited. The data protection is
  * the masking that already happened on the server (the payload only ever held

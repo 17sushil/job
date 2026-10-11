@@ -1,3 +1,6 @@
+import { UserRepository } from '../user/user.repository.js';
+import { toApplicantPayload } from '../applicant/applicant.serializer.js';
+import { renderApplicantPdf } from '../applicant/resume-pdf.js';
 import { serviceRequest } from '../../common/http.js';
 import type { RequestHandler } from 'express';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
@@ -152,6 +155,17 @@ export async function watermarkPdf(bytes: Uint8Array) {
 export const recruiterResume: RequestHandler = async (req, res, next) => {
   try {
     if (!z.string().uuid().safeParse(req.params.id).success) throw new AppError(400, 'Invalid candidate id');
+    // Old URLs must enforce the same redaction as the new applicant endpoints.
+    // Never overlay a blur on original PDF bytes: text/images would remain recoverable.
+    if (req.user!.role === UserRole.RECRUITER) {
+      const candidate = await new UserRepository().findResumeProfile(String(req.params.id));
+      if (!candidate || candidate.isDeleted || candidate.role !== UserRole.CANDIDATE || (!candidate.resumeFileName && !candidate.parsedProfile && !candidate.resumeCanvas)) throw new AppError(404, 'No resume available');
+      const bytes = await renderApplicantPdf(toApplicantPayload(null, candidate, null), 'Recruiter view');
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('Content-Disposition', 'inline; filename="JobDev-candidate-resume.pdf"');
+      res.type('application/pdf').send(Buffer.from(bytes));
+      return;
+    }
     const candidate = await AppDataSource.getRepository(User).findOneBy({ userId: String(req.params.id), role: UserRole.CANDIDATE, isDeleted: false });
     if (!candidate || !candidate.resumeFileName) throw new AppError(404, 'No resume available');
     let bytes = candidate.resumePdf ?? (candidate.resumeData ? Buffer.from(candidate.resumeData, 'base64') : null);
