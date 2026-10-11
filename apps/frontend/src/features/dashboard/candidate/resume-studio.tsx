@@ -14,6 +14,7 @@ import {
   FileUp,
   Gauge,
   GraduationCap,
+  LayoutTemplate,
   Loader2,
   Pencil,
   Plus,
@@ -24,7 +25,7 @@ import {
   UploadCloud,
   X,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +55,8 @@ import {
   type CanvasDocument,
   type ResumeDocument,
 } from './demo-resume-pdf';
+import { fillWithTemplate } from './templates';
+import { TemplateStrip } from './templates/template-gallery';
 
 import dynamic from 'next/dynamic';
 import type { CandidateProfile } from './mock-data';
@@ -160,6 +163,16 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<CanvasDocument | null>(null);
   const [editBusy, setEditBusy] = useState(false);
+  const [templateBusy, setTemplateBusy] = useState<string | null>(null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  /* The extracted resume in document form — powers the editor's Templates
+     panel. Prefers the live result, falls back to the saved profile. */
+  const editorDocument = useMemo<ResumeDocument | null>(() => {
+    if (result?.document) return result.document;
+    if (!savedResume?.parsedProfile) return null;
+    const document = toResumeDocument(savedResume.parsedProfile);
+    return document.sections.length ? document : null;
+  }, [result?.document, savedResume?.parsedProfile]);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   /* Shown after an extraction: download the ATS PDF, edit it, or skip. */
@@ -325,6 +338,37 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
       setError(problem instanceof Error ? problem.message : 'Could not open the editor.');
     } finally {
       setEditBusy(false);
+    }
+  }
+
+  /* Template pick: fill from the extracted details (never from layout edits). */
+  async function applyTemplate(id: string) {
+    if (editBusy || templateBusy) return;
+    setError(null);
+    setSaveError(null);
+    setTemplateBusy(id);
+    try {
+      /* The saved profile already holds the extraction — fill straight from
+         it. Re-uploading to the ATS service on every click was the wait;
+         only a newly picked, not-yet-extracted file needs that round-trip. */
+      let document = result?.document ?? editorDocument ?? null;
+      if (rawFileRef.current && rawFileRef.current !== initialFile) {
+        const current = rawFileRef.current;
+        const base64 = await fileAsBase64(current);
+        const data = await upload.mutateAsync([current.name, base64]);
+        setUser(data.user);
+        client.setQueryData(['account', user?.id, 'resume'], { fileName: current.name, dataBase64: base64, parsedProfile: data.user.parsedProfile, canvas: null, uploadedAt: new Date().toISOString() });
+        if (!data.parsed) throw new Error(data.atsError ?? 'No structured resume sections are available.');
+        document = toResumeDocument(data.parsed);
+      }
+      if (!document || !document.sections.length) throw new Error('No structured resume sections are available. Please retry extraction.');
+      const filled = fillWithTemplate(id, document);
+      if (!filled) throw new Error('That template is unavailable.');
+      setEditing(filled);
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : 'Could not apply that template.');
+    } finally {
+      setTemplateBusy(null);
     }
   }
 
@@ -587,14 +631,42 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
         <div className="animate-fade-in-up min-h-[440px] rounded-2xl border border-border bg-card p-5 shadow-sm">
           {tab === 'preview' && (
             <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-semibold">ATS preview</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {result
-                    ? 'Saved to your profile · 1-page ATS resume'
-                    : 'Extract your resume — the ATS version appears here and is saved to your profile.'}
-                </p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">ATS preview</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {result
+                      ? 'Saved to your profile · 1-page ATS resume'
+                      : 'Extract your resume — the ATS version appears here and is saved to your profile.'}
+                  </p>
+                </div>
+                {/* The design entry point lives on the header row, out of the
+                    action stack: pick a template and the editor opens filled. */}
+                <Button
+                  size="sm"
+                  variant={templatesOpen ? 'default' : 'outline'}
+                  className="shrink-0"
+                  onClick={() => setTemplatesOpen((open) => !open)}
+                >
+                  <LayoutTemplate className="h-4 w-4" />
+                  Templates
+                </Button>
               </div>
+
+              {templatesOpen ? (
+                <div className="rounded-2xl border border-primary/40 bg-muted/30 p-3">
+                  <p className="text-[11px] text-muted-foreground">
+                    Pick a design — your extracted details fill it and it opens in the canvas editor.
+                  </p>
+                  <TemplateStrip
+                    busy={templateBusy}
+                    onPick={(id) => {
+                      setTemplatesOpen(false);
+                      void applyTemplate(id);
+                    }}
+                  />
+                </div>
+              ) : null}
 
               {/* One column, in order: download the saved copy (once there is
                   one), edit in the canvas, or skip. The editor is offered from
@@ -870,7 +942,14 @@ function ResumeStudioEditor({ profile, file: incomingFile, onFileChange, result:
       </section>
 
       {editing ? (
-        <ResumeEditor canvas={editing} saving={saving} saveError={saveError} onSave={saveEdit} onCancel={() => { if (!saving) setEditing(null); }} />
+        <ResumeEditor
+          canvas={editing}
+          resumeDocument={editorDocument}
+          saving={saving}
+          saveError={saveError}
+          onSave={saveEdit}
+          onCancel={() => { if (!saving) setEditing(null); }}
+        />
       ) : null}
     </div>
   );
